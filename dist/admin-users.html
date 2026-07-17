@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JOBZ · Cadastro de Usuários</title>
+    <script src="/config.js"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #070d1d;
+        --panel: #111a2e;
+        --panel-2: #16223a;
+        --border: #263552;
+        --text: #f3f7ff;
+        --muted: #8ea0c2;
+        --blue: #1d6fff;
+        --green: #20c997;
+        --red: #ff5c70;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Inter, Roboto, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      main {
+        width: min(780px, 100%);
+      }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 18px;
+      }
+      h1 {
+        font-size: 26px;
+        line-height: 1.15;
+        margin: 0 0 6px;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+      a {
+        color: var(--text);
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 22px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+      .full {
+        grid-column: 1 / -1;
+      }
+      label {
+        display: grid;
+        gap: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      input,
+      select {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--panel-2);
+        color: var(--text);
+        padding: 0 12px;
+        font: inherit;
+      }
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-top: 24px;
+        color: var(--text);
+        text-transform: none;
+      }
+      .check input {
+        width: 18px;
+        min-height: 18px;
+      }
+      button {
+        min-height: 42px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--panel-2);
+        color: var(--text);
+        padding: 0 16px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--blue);
+        border-color: var(--blue);
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        align-items: center;
+        margin-top: 18px;
+      }
+      .notice {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border-radius: 6px;
+        background: var(--panel-2);
+        color: var(--muted);
+        border: 1px solid var(--border);
+      }
+      .notice.ok {
+        color: var(--green);
+      }
+      .notice.err {
+        color: var(--red);
+      }
+      .hidden {
+        display: none;
+      }
+      @media (max-width: 680px) {
+        body {
+          padding: 14px;
+          display: block;
+        }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="topbar">
+        <div>
+          <h1>Cadastro de Usuários JOBZ</h1>
+          <p>Cria o login no Supabase Auth e o membro em Equipe.</p>
+        </div>
+        <a href="/">Voltar ao app</a>
+      </div>
+
+      <section id="loginCard" class="card hidden">
+        <form id="loginForm" class="grid">
+          <label>
+            E-mail do admin
+            <input id="loginEmail" type="email" autocomplete="username" required />
+          </label>
+          <label>
+            Senha
+            <input id="loginPassword" type="password" autocomplete="current-password" required />
+          </label>
+          <div class="actions full">
+            <button class="primary" type="submit">Entrar como admin</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="formCard" class="card hidden">
+        <form id="userForm" class="grid">
+          <label>
+            Nome
+            <input id="nome" required placeholder="Nome do consultor" />
+          </label>
+          <label>
+            E-mail
+            <input id="email" type="email" required placeholder="nome@jobz.com.br" />
+          </label>
+          <label>
+            Função
+            <input id="funcao" value="Consultor" required />
+          </label>
+          <label>
+            Papel
+            <select id="papel">
+              <option value="consultor">Consultor</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+          <label>
+            Custo/hora (R$)
+            <input id="custoHora" inputmode="decimal" value="0" />
+          </label>
+          <label class="check">
+            <input id="ativo" type="checkbox" checked />
+            Ativo
+          </label>
+          <label>
+            Senha temporária
+            <input id="password" type="password" minlength="8" autocomplete="new-password" required />
+          </label>
+          <label>
+            Confirmar senha
+            <input id="password2" type="password" minlength="8" autocomplete="new-password" required />
+          </label>
+          <div class="actions full">
+            <button type="button" id="signOutBtn">Sair</button>
+            <button class="primary" id="submitBtn" type="submit">Criar usuário</button>
+          </div>
+        </form>
+      </section>
+
+      <div id="message" class="notice">Carregando...</div>
+    </main>
+
+    <script type="module">
+      import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+      const cfg = window.__JOBZ_CONFIG__ || {};
+      const message = document.getElementById("message");
+      const loginCard = document.getElementById("loginCard");
+      const formCard = document.getElementById("formCard");
+      const loginForm = document.getElementById("loginForm");
+      const userForm = document.getElementById("userForm");
+      const submitBtn = document.getElementById("submitBtn");
+      const signOutBtn = document.getElementById("signOutBtn");
+
+      const setMessage = (text, kind = "") => {
+        message.textContent = text;
+        message.className = `notice ${kind}`.trim();
+      };
+
+      const show = (el, visible) => el.classList.toggle("hidden", !visible);
+
+      if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.dataSource !== "supabase") {
+        setMessage("Supabase nao esta configurado neste deploy.", "err");
+        show(loginCard, false);
+        show(formCard, false);
+      }
+
+      const supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+
+      async function refreshSession() {
+        const { data } = await supabase.auth.getSession();
+        const session = data.session;
+        show(loginCard, !session);
+        show(formCard, !!session);
+        if (session) {
+          setMessage(`Logado como ${session.user.email}. Somente admins conseguem criar usuarios.`);
+        } else {
+          setMessage("Entre com um usuario admin para cadastrar novos membros.");
+        }
+        return session;
+      }
+
+      loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const email = document.getElementById("loginEmail").value.trim();
+        const password = document.getElementById("loginPassword").value;
+        setMessage("Entrando...");
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          setMessage(error.message, "err");
+          return;
+        }
+        await refreshSession();
+      });
+
+      signOutBtn.addEventListener("click", async () => {
+        await supabase.auth.signOut();
+        await refreshSession();
+      });
+
+      userForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const session = await refreshSession();
+        if (!session) return;
+
+        const password = document.getElementById("password").value;
+        const password2 = document.getElementById("password2").value;
+        if (password !== password2) {
+          setMessage("As senhas nao conferem.", "err");
+          return;
+        }
+
+        submitBtn.disabled = true;
+        setMessage("Criando usuario...");
+
+        const payload = {
+          nome: document.getElementById("nome").value,
+          email: document.getElementById("email").value,
+          funcao: document.getElementById("funcao").value,
+          papel: document.getElementById("papel").value,
+          custoHora: document.getElementById("custoHora").value,
+          ativo: document.getElementById("ativo").checked,
+          password,
+        };
+
+        try {
+          const response = await fetch("/api/create-consultor", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify(payload),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Erro ao criar usuario.");
+          userForm.reset();
+          document.getElementById("funcao").value = "Consultor";
+          document.getElementById("ativo").checked = true;
+          setMessage(`Usuario criado: ${result.consultor.email}`, "ok");
+        } catch (error) {
+          setMessage(error.message, "err");
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+
+      refreshSession();
+    </script>
+  </body>
+</html>

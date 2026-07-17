@@ -43,9 +43,10 @@ No projeto da Vercel, configure:
 JOBZ_DATA_SOURCE=supabase
 SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
-Nao configure `SUPABASE_SERVICE_ROLE_KEY` na Vercel.
+`SUPABASE_SERVICE_ROLE_KEY` sera usada somente pela funcao serverless `/api/create-consultor`. Ela nao vai para `dist/config.js`.
 
 Depois faca um novo deploy. O build gera `dist/config.js` automaticamente.
 
@@ -99,3 +100,16 @@ Depois da validacao:
 5. Teste login como consultor.
 
 Se algum consultor nao enxergar dados esperados, confira se o e-mail em Authentication e `consultores.email` esta identico.
+
+## Cadastro integrado de usuarios
+
+Depois do deploy, acesse:
+
+```text
+https://sua-url.vercel.app/admin-users.html
+```
+
+Entre com um usuario admin. A tela cria ao mesmo tempo:
+
+- o usuario no Supabase Authentication;
+- o membro em `consultores`.

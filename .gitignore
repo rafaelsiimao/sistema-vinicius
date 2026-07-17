@@ -6,3 +6,4 @@ node_modules/
 *.log
 jobz_backup_*.json
 package-lock.json
+bkp/

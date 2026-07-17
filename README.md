@@ -9,6 +9,8 @@ Entrega estática do sistema interno JOBZ para publicação na Vercel com banco 
 - `supabase/schema.sql`: schema inicial do banco, índices e políticas RLS.
 - `scripts/import-to-supabase.mjs`: importação opcional do backup inicial usando `service_role`.
 - `scripts/generate-config.mjs`: gera a configuração pública do frontend para Vercel.
+- `dist/admin-users.html`: ferramenta admin para criar login no Supabase Auth e membro em Equipe.
+- `api/create-consultor.mjs`: função segura usada por `admin-users.html`.
 
 ## Vercel
 
@@ -19,6 +21,9 @@ Variáveis de ambiente:
 - `JOBZ_DATA_SOURCE=supabase`
 - `SUPABASE_URL=https://xxxx.supabase.co`
 - `SUPABASE_ANON_KEY=...`
+- `SUPABASE_SERVICE_ROLE_KEY=...`
+
+`SUPABASE_SERVICE_ROLE_KEY` fica disponível apenas para a função serverless `api/create-consultor.mjs`. Ela não é escrita no `dist/config.js`.
 
 Configuração já versionada:
 
@@ -54,4 +59,14 @@ $env:JOBZ_ADMIN_NAME="Nome do Admin"
 npm run import:supabase -- "caminho\jobz_backup_XXXX.json"
 ```
 
-Nunca coloque `SUPABASE_SERVICE_ROLE_KEY` na Vercel, no GitHub ou no frontend.
+Nunca coloque `SUPABASE_SERVICE_ROLE_KEY` no GitHub, em arquivos do projeto ou no frontend. Na Vercel, ela pode ser configurada como Environment Variable porque será lida somente no servidor pela função `/api/create-consultor`.
+
+## Cadastro de usuários
+
+Acesse:
+
+```text
+https://sua-url.vercel.app/admin-users.html
+```
+
+Entre com um usuário que já seja `admin` em `consultores`. Essa tela cria o usuário no Supabase Authentication e grava/atualiza o consultor na tabela `consultores`.
