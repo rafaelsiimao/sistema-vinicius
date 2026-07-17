@@ -7,6 +7,9 @@
 //   1) defina no .env (ou no ambiente):
 //        SUPABASE_URL=...            (Project Settings → API → Project URL)
 //        SUPABASE_SERVICE_ROLE_KEY=... (Project Settings → API → service_role — SECRETA)
+//        JOBZ_ADMIN_EMAIL=...        (opcional: e-mail do primeiro admin)
+//        JOBZ_ADMIN_PASSWORD=...     (opcional: cria/confirma usuario Auth)
+//        JOBZ_ADMIN_NAME=...         (opcional: nome se precisar criar consultor)
 //   2) node scripts/import-to-supabase.mjs caminho/para/backup.json
 //
 // A service_role NUNCA vai para o app publicado — é só para esta carga.
@@ -17,6 +20,9 @@ import { createClient } from "@supabase/supabase-js";
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const file = process.argv[2];
+const adminEmail = (process.env.JOBZ_ADMIN_EMAIL ?? "").trim().toLowerCase();
+const adminPassword = (process.env.JOBZ_ADMIN_PASSWORD ?? "").trim();
+const adminName = (process.env.JOBZ_ADMIN_NAME ?? "").trim();
 
 if (!url || !key) {
   console.error("Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no ambiente/.env.");
@@ -29,6 +35,86 @@ if (!file) {
 
 const snap = JSON.parse(readFileSync(file, "utf8"));
 const sb = createClient(url, key, { auth: { persistSession: false } });
+
+async function ensureAuthAdminUser() {
+  if (!adminEmail || !adminPassword) return;
+
+  const { error } = await sb.auth.admin.createUser({
+    email: adminEmail,
+    password: adminPassword,
+    email_confirm: true,
+    user_metadata: { role: "admin" },
+  });
+
+  if (!error) {
+    console.log(`✓ auth admin: ${adminEmail}`);
+    return;
+  }
+
+  const msg = String(error.message ?? "");
+  if (/already|registered|exists/i.test(msg)) {
+    console.log(`• auth admin: ${adminEmail} já existe`);
+    return;
+  }
+
+  console.error(`✗ auth admin: ${msg}`);
+  process.exit(1);
+}
+
+function promoteAdminRow(row) {
+  if (!adminEmail) return row;
+  const email = String(row.email ?? "").trim().toLowerCase();
+  return email === adminEmail ? { ...row, papel: "admin" } : row;
+}
+
+async function ensureConsultorAdmin() {
+  if (!adminEmail) return;
+
+  const { data, error } = await sb
+    .from("consultores")
+    .select("id,email,papel")
+    .ilike("email", adminEmail)
+    .limit(1);
+
+  if (error) {
+    console.error(`✗ consultor admin: ${error.message}`);
+    process.exit(1);
+  }
+
+  if (data?.length) {
+    const row = data[0];
+    if (row.papel !== "admin") {
+      const { error: updateError } = await sb
+        .from("consultores")
+        .update({ papel: "admin" })
+        .eq("id", row.id);
+      if (updateError) {
+        console.error(`✗ consultor admin: ${updateError.message}`);
+        process.exit(1);
+      }
+    }
+    console.log(`✓ consultor admin: ${adminEmail}`);
+    return;
+  }
+
+  const fallbackId = `admin-${adminEmail.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+  const fallbackName = adminName || adminEmail.split("@")[0] || "Admin";
+  const { error: insertError } = await sb.from("consultores").upsert({
+    id: fallbackId,
+    nome: fallbackName,
+    email: adminEmail,
+    funcao: "Administrador",
+    custo_hora_cents: 0,
+    ativo: true,
+    papel: "admin",
+  });
+
+  if (insertError) {
+    console.error(`✗ consultor admin: ${insertError.message}`);
+    process.exit(1);
+  }
+  console.log(`✓ consultor admin criado: ${adminEmail}`);
+}
 
 // coleção (app) → tabela (banco), em ordem de dependência (pais antes de filhos).
 const ORDER = [
@@ -53,8 +139,12 @@ function chunk(arr, n) {
   return out;
 }
 
+await ensureAuthAdminUser();
+
 for (const [col, table] of ORDER) {
-  const rows = (snap[col] ?? []).map(toSnake);
+  const rows = (snap[col] ?? [])
+    .map((row) => (table === "consultores" ? promoteAdminRow(row) : row))
+    .map(toSnake);
   if (!rows.length) {
     console.log(`• ${table}: 0`);
     continue;
@@ -70,4 +160,5 @@ for (const [col, table] of ORDER) {
   }
   console.log(`✓ ${table}: ${ok}`);
 }
+await ensureConsultorAdmin();
 console.log("\nCarga concluída.");

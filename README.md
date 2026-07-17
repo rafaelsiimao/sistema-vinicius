@@ -48,6 +48,9 @@ Defina as variáveis somente na sua máquina:
 ```powershell
 $env:SUPABASE_URL="https://xxxx.supabase.co"
 $env:SUPABASE_SERVICE_ROLE_KEY="service_role_secret"
+$env:JOBZ_ADMIN_EMAIL="admin@exemplo.com"
+$env:JOBZ_ADMIN_PASSWORD="senha_temporaria_forte"
+$env:JOBZ_ADMIN_NAME="Nome do Admin"
 npm run import:supabase -- "caminho\jobz_backup_XXXX.json"
 ```
 

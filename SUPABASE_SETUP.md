@@ -33,6 +33,8 @@ Em Authentication > Users:
 
 Importante: esse mesmo e-mail precisa existir em `consultores.email` depois da importacao/cadastro da equipe, com `papel = 'admin'`.
 
+Alternativa: se voce for importar por linha de comando, o script `scripts/import-to-supabase.mjs` tambem pode criar o usuario de Auth e promover o consultor para admin automaticamente. Para isso, use as variaveis `JOBZ_ADMIN_EMAIL`, `JOBZ_ADMIN_PASSWORD` e, opcionalmente, `JOBZ_ADMIN_NAME`.
+
 ## 4. Configurar Vercel
 
 No projeto da Vercel, configure:
@@ -61,9 +63,18 @@ Opcao local:
 ```powershell
 $env:SUPABASE_URL="https://xxxx.supabase.co"
 $env:SUPABASE_SERVICE_ROLE_KEY="service_role_secret"
+$env:JOBZ_ADMIN_EMAIL="admin@exemplo.com"
+$env:JOBZ_ADMIN_PASSWORD="senha_temporaria_forte"
+$env:JOBZ_ADMIN_NAME="Nome do Admin"
 npm install
 npm run import:supabase -- "caminho\jobz_backup_XXXX.json"
 ```
+
+Quando `JOBZ_ADMIN_EMAIL` estiver definido, o importador:
+
+- cria/confirma o usuario em Authentication se `JOBZ_ADMIN_PASSWORD` tambem estiver definido;
+- se encontrar esse e-mail na equipe importada, define `papel = 'admin'`;
+- se nao encontrar, cria um consultor admin minimo para esse e-mail.
 
 ## 6. Validar antes da RLS final
 
