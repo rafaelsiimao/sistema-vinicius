@@ -102,6 +102,21 @@ before insert or update of tarefa_id on lancamentos
 for each row
 execute function jobz_normalize_lancamento_tarefa_id();
 
+-- Usado na policy de SELECT: tarefas inativas nao entram em calculos/telas.
+create or replace function jobz_lancamento_tarefa_contabiliza(p_tarefa_id text)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select
+    p_tarefa_id is null
+    or trim(p_tarefa_id) = ''
+    or exists (
+      select 1
+      from tarefas
+      where id = p_tarefa_id
+        and ativa = true
+    )
+$$;
+
 create table if not exists pagamentos (
   id           text primary key,
   consultor_id text not null references consultores(id) on delete restrict,
@@ -163,10 +178,21 @@ begin
   loop
     execute format('alter table %I enable row level security;', t);
     execute format('drop policy if exists "auth_all" on %I;', t);
-    execute format(
-      'create policy "auth_all" on %I for all to authenticated using (true) with check (true);',
-      t
-    );
+    if t = 'lancamentos' then
+      execute 'drop policy if exists "lancamentos_select_active" on lancamentos;';
+      execute 'drop policy if exists "lancamentos_insert_auth" on lancamentos;';
+      execute 'drop policy if exists "lancamentos_update_auth" on lancamentos;';
+      execute 'drop policy if exists "lancamentos_delete_auth" on lancamentos;';
+      execute 'create policy "lancamentos_select_active" on lancamentos for select to authenticated using (jobz_lancamento_tarefa_contabiliza(tarefa_id));';
+      execute 'create policy "lancamentos_insert_auth" on lancamentos for insert to authenticated with check (true);';
+      execute 'create policy "lancamentos_update_auth" on lancamentos for update to authenticated using (true) with check (true);';
+      execute 'create policy "lancamentos_delete_auth" on lancamentos for delete to authenticated using (true);';
+    else
+      execute format(
+        'create policy "auth_all" on %I for all to authenticated using (true) with check (true);',
+        t
+      );
+    end if;
   end loop;
 end $$;
 
@@ -217,8 +243,8 @@ end $$;
 create policy "consultor_projetos"   on projetos    for select to authenticated using (true);
 create policy "consultor_consultores" on consultores for select to authenticated using (id = jobz_consultor_id());
 create policy "consultor_tarefas"    on tarefas     for select to authenticated using (resp_id = jobz_consultor_id());
-create policy "consultor_lancam_sel" on lancamentos for select to authenticated using (consultor_id = jobz_consultor_id());
-create policy "consultor_lancam_ins" on lancamentos for insert to authenticated with check (consultor_id = jobz_consultor_id());
+create policy "consultor_lancam_sel" on lancamentos for select to authenticated using (consultor_id = jobz_consultor_id() and jobz_lancamento_tarefa_contabiliza(tarefa_id));
+create policy "consultor_lancam_ins" on lancamentos for insert to authenticated with check (consultor_id = jobz_consultor_id() and jobz_lancamento_tarefa_contabiliza(tarefa_id));
 create policy "consultor_pagam_sel"  on pagamentos  for select to authenticated using (consultor_id = jobz_consultor_id());
 -- (consultor NÃO recebe policy em parcelas/custos/faturamento => não enxerga)
 */

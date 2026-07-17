@@ -25,6 +25,20 @@ create or replace function jobz_is_admin() returns boolean
     )
   $$;
 
+create or replace function jobz_lancamento_tarefa_contabiliza(p_tarefa_id text)
+returns boolean
+  language sql stable security definer set search_path = public as $$
+    select
+      p_tarefa_id is null
+      or trim(p_tarefa_id) = ''
+      or exists (
+        select 1
+        from tarefas
+        where id = p_tarefa_id
+          and ativa = true
+      )
+  $$;
+
 do $$
 declare t text;
 begin
@@ -36,13 +50,21 @@ begin
     execute format('drop policy if exists "auth_all" on %I;', t);
     execute format('drop policy if exists "admin_all" on %I;', t);
   end loop;
+  drop policy if exists "lancamentos_select_active" on lancamentos;
+  drop policy if exists "lancamentos_insert_auth" on lancamentos;
+  drop policy if exists "lancamentos_update_auth" on lancamentos;
+  drop policy if exists "lancamentos_delete_auth" on lancamentos;
+  drop policy if exists "admin_lancam_sel" on lancamentos;
+  drop policy if exists "admin_lancam_ins" on lancamentos;
+  drop policy if exists "admin_lancam_upd" on lancamentos;
+  drop policy if exists "admin_lancam_del" on lancamentos;
 end $$;
 
 do $$
 declare t text;
 begin
   foreach t in array array[
-    'consultores','projetos','parcelas','tarefas','lancamentos',
+    'consultores','projetos','parcelas','tarefas',
     'pagamentos','custos','comentarios','categorias_custo'
   ]
   loop
@@ -72,13 +94,36 @@ create policy "consultor_tarefas"
   on tarefas for select to authenticated
   using (resp_id = jobz_consultor_id());
 
+create policy "admin_lancam_sel"
+  on lancamentos for select to authenticated
+  using (jobz_is_admin() and jobz_lancamento_tarefa_contabiliza(tarefa_id));
+
+create policy "admin_lancam_ins"
+  on lancamentos for insert to authenticated
+  with check (jobz_is_admin());
+
+create policy "admin_lancam_upd"
+  on lancamentos for update to authenticated
+  using (jobz_is_admin())
+  with check (jobz_is_admin());
+
+create policy "admin_lancam_del"
+  on lancamentos for delete to authenticated
+  using (jobz_is_admin());
+
 create policy "consultor_lancam_sel"
   on lancamentos for select to authenticated
-  using (consultor_id = jobz_consultor_id());
+  using (
+    consultor_id = jobz_consultor_id()
+    and jobz_lancamento_tarefa_contabiliza(tarefa_id)
+  );
 
 create policy "consultor_lancam_ins"
   on lancamentos for insert to authenticated
-  with check (consultor_id = jobz_consultor_id());
+  with check (
+    consultor_id = jobz_consultor_id()
+    and jobz_lancamento_tarefa_contabiliza(tarefa_id)
+  );
 
 create policy "consultor_pagam_sel"
   on pagamentos for select to authenticated
