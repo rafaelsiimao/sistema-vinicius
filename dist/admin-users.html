@@ -247,13 +247,36 @@
 
       const show = (el, visible) => el.classList.toggle("hidden", !visible);
 
-      if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.dataSource !== "supabase") {
-        setMessage("Supabase nao esta configurado neste deploy.", "err");
-        show(loginCard, false);
-        show(formCard, false);
+      async function loadConfig() {
+        if (cfg.supabaseUrl && cfg.supabaseAnonKey && cfg.dataSource === "supabase") {
+          return cfg;
+        }
+
+        try {
+          const response = await fetch("/api/public-config", { cache: "no-store" });
+          if (!response.ok) return cfg;
+          return await response.json();
+        } catch {
+          return cfg;
+        }
       }
 
-      const supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+      const loadedConfig = await loadConfig();
+      if (
+        !loadedConfig.supabaseUrl ||
+        !loadedConfig.supabaseAnonKey ||
+        loadedConfig.dataSource !== "supabase"
+      ) {
+        setMessage("Supabase nao esta configurado neste deploy. Confira SUPABASE_URL e SUPABASE_ANON_KEY na Vercel e faca redeploy.", "err");
+        show(loginCard, false);
+        show(formCard, false);
+        throw new Error("Supabase config missing");
+      }
+
+      const supabase = createClient(
+        loadedConfig.supabaseUrl,
+        loadedConfig.supabaseAnonKey
+      );
 
       async function refreshSession() {
         const { data } = await supabase.auth.getSession();
