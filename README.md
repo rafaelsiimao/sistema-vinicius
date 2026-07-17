@@ -10,7 +10,7 @@ Entrega estática do sistema interno JOBZ para publicação na Vercel com banco 
 - `scripts/import-to-supabase.mjs`: importação opcional do backup inicial usando `service_role`.
 - `scripts/generate-config.mjs`: gera a configuração pública do frontend para Vercel.
 - `dist/admin-users.html`: ferramenta admin para criar login no Supabase Auth e membro em Equipe.
-- `api/create-consultor.mjs`: função segura usada por `admin-users.html`.
+- `api/create-consultor.js`: função segura usada por `admin-users.html`.
 
 ## Vercel
 
@@ -23,7 +23,7 @@ Variáveis de ambiente:
 - `SUPABASE_ANON_KEY=...`
 - `SUPABASE_SERVICE_ROLE_KEY=...`
 
-`SUPABASE_SERVICE_ROLE_KEY` fica disponível apenas para a função serverless `api/create-consultor.mjs`. Ela não é escrita no `dist/config.js`.
+`SUPABASE_SERVICE_ROLE_KEY` fica disponível apenas para a função serverless `api/create-consultor.js`. Ela não é escrita no `dist/config.js`.
 
 Configuração já versionada:
 

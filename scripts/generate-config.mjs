@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 
+const isVercelBuild = Boolean(process.env.VERCEL);
 const rawDataSource = process.env.JOBZ_DATA_SOURCE;
 const supabaseUrl =
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
@@ -22,6 +23,11 @@ const config = {
   supabaseUrl: supabaseUrl || "COLE_AQUI_A_PROJECT_URL",
   supabaseAnonKey: supabaseAnonKey || "COLE_AQUI_A_ANON_PUBLIC_KEY",
 };
+
+if (!isVercelBuild && dataSource === "local") {
+  console.log("Local build without Supabase env; keeping existing dist/config.js.");
+  process.exit(0);
+}
 
 const body = `/* Generated at deploy time by scripts/generate-config.mjs.
    Configure Vercel environment variables:

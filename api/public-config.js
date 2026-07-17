@@ -1,8 +1,5 @@
 const json = (res, status, body) => {
-  res.statusCode = status;
-  res.setHeader("content-type", "application/json; charset=utf-8");
-  res.setHeader("cache-control", "no-cache, no-store, must-revalidate");
-  res.end(JSON.stringify(body));
+  res.status(status).json(body);
 };
 
 export default function handler(_req, res) {
@@ -15,6 +12,7 @@ export default function handler(_req, res) {
     process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
     "";
 
+  res.setHeader("cache-control", "no-cache, no-store, must-revalidate");
   json(res, 200, {
     dataSource: supabaseUrl && supabaseAnonKey ? "supabase" : "local",
     supabaseUrl,

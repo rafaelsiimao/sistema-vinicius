@@ -2,9 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 const json = (res, status, body) => {
-  res.statusCode = status;
-  res.setHeader("content-type", "application/json; charset=utf-8");
-  res.end(JSON.stringify(body));
+  res.status(status).json(body);
 };
 
 const requiredEnv = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"];
@@ -22,13 +20,6 @@ function centsFromCurrency(value) {
   const normalized = String(value ?? "0").replace(/\./g, "").replace(",", ".");
   const number = Number(normalized);
   return Number.isFinite(number) ? Math.round(number * 100) : 0;
-}
-
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString("utf8");
-  return raw ? JSON.parse(raw) : {};
 }
 
 async function findAuthUserByEmail(adminClient, email) {
@@ -90,13 +81,7 @@ export default async function handler(req, res) {
     return json(res, 403, { error: "Somente admin pode criar usuarios." });
   }
 
-  let payload;
-  try {
-    payload = await readBody(req);
-  } catch {
-    return json(res, 400, { error: "JSON invalido." });
-  }
-
+  const payload = req.body ?? {};
   const email = normalizeEmail(payload.email);
   const password = String(payload.password ?? "");
   const nome = String(payload.nome ?? "").trim();
