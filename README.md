@@ -1,0 +1,54 @@
+# Sistema Vinicius / JOBZ
+
+Entrega estática do sistema interno JOBZ para publicação na Vercel com banco e login pelo Supabase.
+
+## Estrutura
+
+- `dist/`: app React já compilado.
+- `dist/config.js`: gerado no build a partir das variáveis de ambiente.
+- `supabase/schema.sql`: schema inicial do banco, índices e políticas RLS.
+- `scripts/import-to-supabase.mjs`: importação opcional do backup inicial usando `service_role`.
+- `scripts/generate-config.mjs`: gera a configuração pública do frontend para Vercel.
+
+## Vercel
+
+Configure o projeto na Vercel apontando para este repositório.
+
+Variáveis de ambiente:
+
+- `JOBZ_DATA_SOURCE=supabase`
+- `SUPABASE_URL=https://xxxx.supabase.co`
+- `SUPABASE_ANON_KEY=...`
+
+Configuração já versionada:
+
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- SPA rewrite: qualquer rota cai em `/index.html`
+
+## Supabase
+
+1. Crie um projeto Supabase.
+2. Rode `supabase/schema.sql` no SQL Editor.
+3. Crie o primeiro usuário admin em Authentication.
+4. Faça o primeiro login no app.
+5. Importe o backup pelo app ou via script local.
+6. Depois de validar os usuários, ative o bloco de RLS por papel no final do schema.
+
+## Importação local
+
+Instale as dependências:
+
+```bash
+npm install
+```
+
+Defina as variáveis somente na sua máquina:
+
+```powershell
+$env:SUPABASE_URL="https://xxxx.supabase.co"
+$env:SUPABASE_SERVICE_ROLE_KEY="service_role_secret"
+npm run import:supabase -- "caminho\jobz_backup_XXXX.json"
+```
+
+Nunca coloque `SUPABASE_SERVICE_ROLE_KEY` na Vercel, no GitHub ou no frontend.

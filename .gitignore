@@ -1,0 +1,8 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.vercel/
+*.log
+jobz_backup_*.json
+package-lock.json

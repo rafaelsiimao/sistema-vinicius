@@ -1,0 +1,13 @@
+{
+  "name": "sistema-vinicius",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/generate-config.mjs",
+    "import:supabase": "node scripts/import-to-supabase.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.52.0"
+  }
+}
