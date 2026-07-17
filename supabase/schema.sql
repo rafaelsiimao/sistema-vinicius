@@ -75,6 +75,33 @@ create table if not exists lancamentos (
   obs          text not null default ''
 );
 
+-- O app pode enviar tarefa_id vazio/inexistente em alguns fluxos/importacoes.
+-- Para pagamentos, o lancamento ainda e valido sem vinculo direto com tarefa.
+create or replace function jobz_normalize_lancamento_tarefa_id()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.tarefa_id is null or trim(new.tarefa_id) = '' then
+    new.tarefa_id := null;
+    return new;
+  end if;
+
+  if not exists (select 1 from tarefas where id = new.tarefa_id) then
+    new.tarefa_id := null;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_jobz_normalize_lancamento_tarefa_id on lancamentos;
+
+create trigger trg_jobz_normalize_lancamento_tarefa_id
+before insert or update of tarefa_id on lancamentos
+for each row
+execute function jobz_normalize_lancamento_tarefa_id();
+
 create table if not exists pagamentos (
   id           text primary key,
   consultor_id text not null references consultores(id) on delete restrict,
