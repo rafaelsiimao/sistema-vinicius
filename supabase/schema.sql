@@ -72,23 +72,35 @@ create table if not exists lancamentos (
   competencia  text not null,
   horas        numeric not null default 0,
   data         text not null,
-  obs          text not null default ''
+  obs          text not null default '',
+  contabiliza  boolean not null default true
 );
 
 -- O app pode enviar tarefa_id vazio/inexistente em alguns fluxos/importacoes.
--- Para pagamentos, o lancamento ainda e valido sem vinculo direto com tarefa.
+-- Para pagamentos, so conta lancamento vinculado a tarefa existente e ativa.
 create or replace function jobz_normalize_lancamento_tarefa_id()
 returns trigger
 language plpgsql
 as $$
+declare
+  v_tarefa_ativa boolean;
 begin
   if new.tarefa_id is null or trim(new.tarefa_id) = '' then
     new.tarefa_id := null;
+    new.contabiliza := false;
     return new;
   end if;
 
-  if not exists (select 1 from tarefas where id = new.tarefa_id) then
+  select ativa
+    into v_tarefa_ativa
+    from tarefas
+    where id = new.tarefa_id;
+
+  if v_tarefa_ativa is null then
     new.tarefa_id := null;
+    new.contabiliza := false;
+  else
+    new.contabiliza := v_tarefa_ativa;
   end if;
 
   return new;
@@ -102,14 +114,53 @@ before insert or update of tarefa_id on lancamentos
 for each row
 execute function jobz_normalize_lancamento_tarefa_id();
 
--- Usado na policy de SELECT: tarefas inativas nao entram em calculos/telas.
-create or replace function jobz_lancamento_tarefa_contabiliza(p_tarefa_id text)
+create or replace function jobz_sync_lancamentos_contabiliza_por_tarefa()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if tg_op = 'DELETE' then
+    update lancamentos
+      set contabiliza = false
+      where tarefa_id = old.id;
+    return old;
+  end if;
+
+  if old.ativa is distinct from new.ativa then
+    update lancamentos
+      set contabiliza = new.ativa
+      where tarefa_id = new.id;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_jobz_tarefas_sync_lancamentos_update on tarefas;
+drop trigger if exists trg_jobz_tarefas_sync_lancamentos_delete on tarefas;
+
+create trigger trg_jobz_tarefas_sync_lancamentos_update
+after update of ativa on tarefas
+for each row
+execute function jobz_sync_lancamentos_contabiliza_por_tarefa();
+
+create trigger trg_jobz_tarefas_sync_lancamentos_delete
+before delete on tarefas
+for each row
+execute function jobz_sync_lancamentos_contabiliza_por_tarefa();
+
+-- Usado na policy de SELECT: tarefas inativas/apagadas nao entram em calculos.
+create or replace function jobz_lancamento_tarefa_contabiliza(
+  p_tarefa_id text,
+  p_contabiliza boolean default true
+)
 returns boolean
 language sql stable security definer set search_path = public as $$
   select
-    p_tarefa_id is null
-    or trim(p_tarefa_id) = ''
-    or exists (
+    coalesce(p_contabiliza, false)
+    and p_tarefa_id is not null
+    and trim(p_tarefa_id) <> ''
+    and exists (
       select 1
       from tarefas
       where id = p_tarefa_id
@@ -183,7 +234,7 @@ begin
       execute 'drop policy if exists "lancamentos_insert_auth" on lancamentos;';
       execute 'drop policy if exists "lancamentos_update_auth" on lancamentos;';
       execute 'drop policy if exists "lancamentos_delete_auth" on lancamentos;';
-      execute 'create policy "lancamentos_select_active" on lancamentos for select to authenticated using (jobz_lancamento_tarefa_contabiliza(tarefa_id));';
+      execute 'create policy "lancamentos_select_active" on lancamentos for select to authenticated using (jobz_lancamento_tarefa_contabiliza(tarefa_id, contabiliza));';
       execute 'create policy "lancamentos_insert_auth" on lancamentos for insert to authenticated with check (true);';
       execute 'create policy "lancamentos_update_auth" on lancamentos for update to authenticated using (true) with check (true);';
       execute 'create policy "lancamentos_delete_auth" on lancamentos for delete to authenticated using (true);';
@@ -243,8 +294,8 @@ end $$;
 create policy "consultor_projetos"   on projetos    for select to authenticated using (true);
 create policy "consultor_consultores" on consultores for select to authenticated using (id = jobz_consultor_id());
 create policy "consultor_tarefas"    on tarefas     for select to authenticated using (resp_id = jobz_consultor_id());
-create policy "consultor_lancam_sel" on lancamentos for select to authenticated using (consultor_id = jobz_consultor_id() and jobz_lancamento_tarefa_contabiliza(tarefa_id));
-create policy "consultor_lancam_ins" on lancamentos for insert to authenticated with check (consultor_id = jobz_consultor_id() and jobz_lancamento_tarefa_contabiliza(tarefa_id));
+create policy "consultor_lancam_sel" on lancamentos for select to authenticated using (consultor_id = jobz_consultor_id() and jobz_lancamento_tarefa_contabiliza(tarefa_id, contabiliza));
+create policy "consultor_lancam_ins" on lancamentos for insert to authenticated with check (consultor_id = jobz_consultor_id() and jobz_lancamento_tarefa_contabiliza(tarefa_id, contabiliza));
 create policy "consultor_pagam_sel"  on pagamentos  for select to authenticated using (consultor_id = jobz_consultor_id());
 -- (consultor NÃO recebe policy em parcelas/custos/faturamento => não enxerga)
 */

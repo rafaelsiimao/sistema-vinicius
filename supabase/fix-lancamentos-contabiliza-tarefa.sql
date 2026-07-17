@@ -1,10 +1,12 @@
--- JOBZ - Compatibilidade
+-- JOBZ - Controle definitivo de contabilizacao de horas por tarefa
 --
--- Este arquivo foi substituido por:
---   supabase/fix-lancamentos-contabiliza-tarefa.sql
+-- Resolve:
+--   1. horas de tarefa inativa ainda aparecendo em /pagamentos;
+--   2. horas de tarefa apagada ainda contando depois que tarefa_id vira NULL;
+--   3. reativacao de tarefa deve fazer as horas voltarem a contar.
 --
--- Mantemos aqui a mesma correcao para evitar que um script antigo restaure
--- a regra incompleta.
+-- Regra adotada:
+--   lancamento so contabiliza se estiver vinculado a uma tarefa existente e ativa.
 
 alter table lancamentos
   add column if not exists contabiliza boolean not null default true;
@@ -98,6 +100,7 @@ before delete on tarefas
 for each row
 execute function jobz_sync_lancamentos_contabiliza_por_tarefa();
 
+-- Backfill: qualquer lancamento sem tarefa existente e ativa deixa de contar.
 update lancamentos l
   set contabiliza = exists (
     select 1

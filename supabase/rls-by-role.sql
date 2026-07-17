@@ -25,13 +25,17 @@ create or replace function jobz_is_admin() returns boolean
     )
   $$;
 
-create or replace function jobz_lancamento_tarefa_contabiliza(p_tarefa_id text)
+create or replace function jobz_lancamento_tarefa_contabiliza(
+  p_tarefa_id text,
+  p_contabiliza boolean default true
+)
 returns boolean
   language sql stable security definer set search_path = public as $$
     select
-      p_tarefa_id is null
-      or trim(p_tarefa_id) = ''
-      or exists (
+      coalesce(p_contabiliza, false)
+      and p_tarefa_id is not null
+      and trim(p_tarefa_id) <> ''
+      and exists (
         select 1
         from tarefas
         where id = p_tarefa_id
@@ -59,6 +63,8 @@ begin
   drop policy if exists "admin_lancam_upd" on lancamentos;
   drop policy if exists "admin_lancam_del" on lancamentos;
 end $$;
+
+drop function if exists jobz_lancamento_tarefa_contabiliza(text);
 
 do $$
 declare t text;
@@ -96,7 +102,7 @@ create policy "consultor_tarefas"
 
 create policy "admin_lancam_sel"
   on lancamentos for select to authenticated
-  using (jobz_is_admin() and jobz_lancamento_tarefa_contabiliza(tarefa_id));
+  using (jobz_is_admin() and jobz_lancamento_tarefa_contabiliza(tarefa_id, contabiliza));
 
 create policy "admin_lancam_ins"
   on lancamentos for insert to authenticated
@@ -115,14 +121,14 @@ create policy "consultor_lancam_sel"
   on lancamentos for select to authenticated
   using (
     consultor_id = jobz_consultor_id()
-    and jobz_lancamento_tarefa_contabiliza(tarefa_id)
+    and jobz_lancamento_tarefa_contabiliza(tarefa_id, contabiliza)
   );
 
 create policy "consultor_lancam_ins"
   on lancamentos for insert to authenticated
   with check (
     consultor_id = jobz_consultor_id()
-    and jobz_lancamento_tarefa_contabiliza(tarefa_id)
+    and jobz_lancamento_tarefa_contabiliza(tarefa_id, contabiliza)
   );
 
 create policy "consultor_pagam_sel"
