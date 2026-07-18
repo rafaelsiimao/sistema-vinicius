@@ -14,5 +14,5 @@ window.__JOBZ_CONFIG__ = {
 
   // Valores do projeto Supabase:  Supabase → Project Settings → API
   supabaseUrl: "https://foujodkyckjryjickhbq.supabase.co",
-  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvdWpvZGt5Y2tqcnlqaWNraGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDUzNTMyNjYsImV4cCI6MjA2MDkyOTI2Nn0._plVJRRuQQUVg2nOmH7VEXFcFiRCfqtzjKqZDeJgqqw"
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvdWpvZGt5Y2tqcnlqaWNraGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyNjkwNTMsImV4cCI6MjA5OTg0NTA1M30._plVJRRuQQUVg2nOmH7VEXFcFiRCfqtzjKqZDeJgqqw"
 };
