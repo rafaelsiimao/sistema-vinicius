@@ -95,6 +95,21 @@ function PainelExecutivo() {
 
   const [fPendConsultor, setFPendConsultor] = useState("");
   const [fPendProjeto, setFPendProjeto] = useState("");
+  const [fPendMes, setFPendMes] = useState("");
+
+  const mesesPendentes = useMemo(
+    () => [...new Set(tarefasPendentes.map((x) => x.l.competencia))].sort(),
+    [tarefasPendentes],
+  );
+
+  const [aberto, setAberto] = useState<Set<string>>(new Set(["resumo", "horas", "pendentes"]));
+  function toggleSec(key: string) {
+    setAberto((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   return (
     <>
@@ -119,129 +134,127 @@ function PainelExecutivo() {
       </div>
 
       <div className="tbl-wrap">
-        <div className="tbl-title">
+        <div className="tbl-title" style={{ cursor: "pointer" }} onClick={() => toggleSec("resumo")}>
           Resumo por projeto
           <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <select value={fKind} onChange={(e) => setFKind(e.target.value as Kind | "")}>
-              <option value="">Tipo: todos</option>
-              <option value="projeto">Projetos</option>
-              <option value="treinamento">Treinamentos</option>
-            </select>
-            <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-              <option value="">Status: todos</option>
-              {statusList.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-            <input placeholder="Buscar…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: 150 }} />
+            {aberto.has("resumo") && (
+              <>
+                <select value={fKind} onChange={(e) => { e.stopPropagation(); setFKind(e.target.value as Kind | ""); }} onClick={(e) => e.stopPropagation()}>
+                  <option value="">Tipo: todos</option>
+                  <option value="projeto">Projetos</option>
+                  <option value="treinamento">Treinamentos</option>
+                </select>
+                <select value={fStatus} onChange={(e) => { e.stopPropagation(); setFStatus(e.target.value); }} onClick={(e) => e.stopPropagation()}>
+                  <option value="">Status: todos</option>
+                  {statusList.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                <input placeholder="Buscar…" value={busca} onClick={(e) => e.stopPropagation()} onChange={(e) => setBusca(e.target.value)} style={{ width: 150 }} />
+              </>
+            )}
+            <span style={{ fontSize: 13, color: "var(--tx3)", minWidth: 16 }}>{aberto.has("resumo") ? "▲" : "▼"}</span>
           </span>
         </div>
-        <div className="scroll-x">
-          <table>
-            <thead>
-              <tr>
-                <th className="l">ID</th>
-                <th className="l">Projeto</th>
-                <th>Cliente</th>
-                <th>Valor</th>
-                <th>% Concluído</th>
-                <th>% Tempo</th>
-                <th>H. Trab</th>
-                <th>Gasto</th>
-                <th>% Gasto</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrados.map((p) => {
-                const c = calcProjeto(p, snap.lancamentos, snap.pagamentos, rateOf);
-                const pc = pctConcluido(p.id, snap.tarefas);
-                const pt = pctTempo(p, snap.tarefas, today);
-                const pcCor = pc >= pt ? "var(--green)" : "var(--amber)";
-                return (
-                  <tr key={p.id}>
-                    <td className="td-id">
-                      <span className="pill">{p.kind === "treinamento" ? "T" : "P"}</span> {p.id}
-                    </td>
-                    <td className="td-name">{p.nome}</td>
-                    <td style={{ fontSize: 11 }}>{p.cliente}</td>
-                    <td className="td-val">{fmtBRL(c.valorCents)}</td>
-                    <td>
-                      <div style={{ fontSize: 11, color: pcCor, fontFamily: "Roboto Mono, monospace" }}>
-                        {Math.round(pc * 100)}%
-                      </div>
-                      <ProgressBar value={pc} color={pcCor} />
-                    </td>
-                    <td>
-                      <div style={{ fontSize: 11, color: "var(--tx2)", fontFamily: "Roboto Mono, monospace" }}>
-                        {Math.round(pt * 100)}%
-                      </div>
-                      <ProgressBar value={pt} />
-                    </td>
-                    <td className="td-val">{fmtH(c.hTrab)}</td>
-                    <td className="td-val">{fmtBRL(c.custoHTrabCents)}</td>
-                    <td>
-                      <Semaforo pctGasto={c.pctGasto} />
-                    </td>
-                    <td>
-                      <StatusBadge status={p.status} />
-                    </td>
-                  </tr>
-                );
-              })}
-              {filtrados.length === 0 && (
+        {aberto.has("resumo") && (
+          <div className="scroll-x">
+            <table>
+              <thead>
                 <tr>
-                  <td colSpan={10} className="empty-state">
-                    Nenhum projeto encontrado com os filtros.
-                  </td>
+                  <th className="l">ID</th>
+                  <th className="l">Projeto</th>
+                  <th>Cliente</th>
+                  <th>Valor</th>
+                  <th>% Concluído</th>
+                  <th>% Tempo</th>
+                  <th>H. Trab</th>
+                  <th>Gasto</th>
+                  <th>% Gasto</th>
+                  <th>Status</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtrados.map((p) => {
+                  const c = calcProjeto(p, snap.lancamentos, snap.pagamentos, rateOf);
+                  const pc = pctConcluido(p.id, snap.tarefas);
+                  const pt = pctTempo(p, snap.tarefas, today);
+                  const pcCor = pc >= pt ? "var(--green)" : "var(--amber)";
+                  return (
+                    <tr key={p.id}>
+                      <td className="td-id">
+                        <span className="pill">{p.kind === "treinamento" ? "T" : "P"}</span> {p.id}
+                      </td>
+                      <td className="td-name">{p.nome}</td>
+                      <td style={{ fontSize: 11 }}>{p.cliente}</td>
+                      <td className="td-val">{fmtBRL(c.valorCents)}</td>
+                      <td>
+                        <div style={{ fontSize: 11, color: pcCor, fontFamily: "Roboto Mono, monospace" }}>
+                          {Math.round(pc * 100)}%
+                        </div>
+                        <ProgressBar value={pc} color={pcCor} />
+                      </td>
+                      <td>
+                        <div style={{ fontSize: 11, color: "var(--tx2)", fontFamily: "Roboto Mono, monospace" }}>
+                          {Math.round(pt * 100)}%
+                        </div>
+                        <ProgressBar value={pt} />
+                      </td>
+                      <td className="td-val">{fmtH(c.hTrab)}</td>
+                      <td className="td-val">{fmtBRL(c.custoHTrabCents)}</td>
+                      <td><Semaforo pctGasto={c.pctGasto} /></td>
+                      <td><StatusBadge status={p.status} /></td>
+                    </tr>
+                  );
+                })}
+                {filtrados.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="empty-state">Nenhum projeto encontrado com os filtros.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="tbl-wrap">
-        <div className="tbl-title">Horas por consultor</div>
-        <div className="scroll-x">
-          <table>
-            <thead>
-              <tr>
-                <th className="l">Consultor</th>
-                <th>H. Trab (mês)</th>
-                <th>H. Pagas (total)</th>
-                <th>Saldo (h)</th>
-                <th>Valor a pagar</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snap.equipe.map((e) => {
-                const s = saldoConsultor(e.id, snap.lancamentos, snap.pagamentos, rateOf);
-                const hMes = snap.lancamentos
-                  .filter((l) => l.consultorId === e.id && l.competencia === comp)
-                  .reduce((a, l) => a + l.horas, 0);
-                if (s.hTrab === 0 && hMes === 0) return null;
-                return (
-                  <tr key={e.id}>
-                    <td className="l td-name">{e.nome}</td>
-                    <td className="td-val">{fmtH(hMes)}</td>
-                    <td className="td-val" style={{ color: "var(--green)" }}>
-                      {fmtH(s.hPagas)}
-                    </td>
-                    <td className="td-val" style={{ color: s.hSaldo > 0.001 ? "var(--amber)" : "var(--tx3)" }}>
-                      {fmtH(s.hSaldo)}
-                    </td>
-                    <td className="td-val" style={{ color: s.hSaldo > 0.001 ? "var(--amber)" : "var(--tx3)" }}>
-                      {fmtBRL(s.vSaldoCents)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="tbl-title" style={{ cursor: "pointer" }} onClick={() => toggleSec("horas")}>
+          Horas por consultor
+          <span style={{ fontSize: 13, color: "var(--tx3)" }}>{aberto.has("horas") ? "▲" : "▼"}</span>
         </div>
+        {aberto.has("horas") && (
+          <div className="scroll-x">
+            <table>
+              <thead>
+                <tr>
+                  <th className="l">Consultor</th>
+                  <th>H. Trab (mês)</th>
+                  <th>H. Pagas (total)</th>
+                  <th>Saldo (h)</th>
+                  <th>Valor a pagar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {snap.equipe.map((e) => {
+                  const s = saldoConsultor(e.id, snap.lancamentos, snap.pagamentos, rateOf);
+                  const hMes = snap.lancamentos
+                    .filter((l) => l.consultorId === e.id && l.competencia === comp)
+                    .reduce((a, l) => a + l.horas, 0);
+                  if (s.hTrab === 0 && hMes === 0) return null;
+                  return (
+                    <tr key={e.id}>
+                      <td className="l td-name">{e.nome}</td>
+                      <td className="td-val">{fmtH(hMes)}</td>
+                      <td className="td-val" style={{ color: "var(--green)" }}>{fmtH(s.hPagas)}</td>
+                      <td className="td-val" style={{ color: s.hSaldo > 0.001 ? "var(--amber)" : "var(--tx3)" }}>{fmtH(s.hSaldo)}</td>
+                      <td className="td-val" style={{ color: s.hSaldo > 0.001 ? "var(--amber)" : "var(--tx3)" }}>{fmtBRL(s.vSaldoCents)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Tarefas pendentes de pagamento */}
@@ -249,61 +262,73 @@ function PainelExecutivo() {
         const pendFiltrados = tarefasPendentes.filter((x) => {
           if (fPendConsultor && x.l.consultorId !== fPendConsultor) return false;
           if (fPendProjeto && x.l.projetoId !== fPendProjeto) return false;
+          if (fPendMes && x.l.competencia !== fPendMes) return false;
           return true;
         });
         return (
           <div className="tbl-wrap">
-            <div className="tbl-title">
+            <div className="tbl-title" style={{ cursor: "pointer" }} onClick={() => toggleSec("pendentes")}>
               Tarefas realizadas — pendentes de pagamento
-              <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <select value={fPendConsultor} onChange={(e) => setFPendConsultor(e.target.value)} style={{ width: "auto" }}>
-                  <option value="">Todos consultores</option>
-                  {snap.equipe.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                </select>
-                <select value={fPendProjeto} onChange={(e) => setFPendProjeto(e.target.value)} style={{ width: "auto" }}>
-                  <option value="">Todos projetos</option>
-                  {snap.projetos.filter((p) => p.status !== "Cancelado").map((p) => (
-                    <option key={p.id} value={p.id}>{p.id} — {p.nome || p.cliente}</option>
-                  ))}
-                </select>
+              <span style={{ display: "flex", gap: 8, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
+                {aberto.has("pendentes") && (
+                  <>
+                    <select value={fPendMes} onChange={(e) => setFPendMes(e.target.value)} style={{ width: "auto" }}>
+                      <option value="">Todos os meses</option>
+                      {mesesPendentes.map((m) => <option key={m} value={m}>{labelCompetencia(m)}</option>)}
+                    </select>
+                    <select value={fPendConsultor} onChange={(e) => setFPendConsultor(e.target.value)} style={{ width: "auto" }}>
+                      <option value="">Todos consultores</option>
+                      {snap.equipe.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                    </select>
+                    <select value={fPendProjeto} onChange={(e) => setFPendProjeto(e.target.value)} style={{ width: "auto" }}>
+                      <option value="">Todos projetos</option>
+                      {snap.projetos.filter((p) => p.status !== "Cancelado").map((p) => (
+                        <option key={p.id} value={p.id}>{p.id} — {p.nome || p.cliente}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+                <span style={{ fontSize: 13, color: "var(--tx3)", minWidth: 16 }}>{aberto.has("pendentes") ? "▲" : "▼"}</span>
               </span>
             </div>
-            <div className="scroll-x">
-              <table>
-                <thead>
-                  <tr>
-                    <th className="l">Consultor</th>
-                    <th className="l">Projeto</th>
-                    <th className="l">Tarefa</th>
-                    <th>Competência</th>
-                    <th>Horas</th>
-                    <th>Situação</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pendFiltrados.slice(0, 50).map((x) => (
-                    <tr key={x.l.id}>
-                      <td className="l td-name">{x.consultor?.nome ?? x.l.consultorId}</td>
-                      <td className="l" style={{ fontSize: 11 }}>{x.projeto?.nome ?? x.l.projetoId}</td>
-                      <td className="l" style={{ fontSize: 11, whiteSpace: "normal", maxWidth: 260 }}>
-                        {x.tarefa?.nome ?? "—"}
-                      </td>
-                      <td>{labelCompetencia(x.l.competencia)}</td>
-                      <td className="td-val">{fmtH(x.l.horas)}</td>
-                      <td><span className="badge b-amber">A pagar</span></td>
+            {aberto.has("pendentes") && (
+              <div className="scroll-x">
+                <table>
+                  <thead>
+                    <tr>
+                      <th className="l">Consultor</th>
+                      <th className="l">Projeto</th>
+                      <th className="l">Tarefa</th>
+                      <th>Competência</th>
+                      <th>Horas</th>
+                      <th>Situação</th>
                     </tr>
-                  ))}
-                  {pendFiltrados.length === 0 && (
-                    <tr><td colSpan={6} className="empty-state">Nenhuma tarefa pendente de pagamento.</td></tr>
-                  )}
-                  {pendFiltrados.length > 50 && (
-                    <tr><td colSpan={6} className="hint" style={{ textAlign: "center" }}>
-                      Mostrando 50 de {pendFiltrados.length}. Use os filtros acima para refinar.
-                    </td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {pendFiltrados.slice(0, 50).map((x) => (
+                      <tr key={x.l.id}>
+                        <td className="l td-name">{x.consultor?.nome ?? x.l.consultorId}</td>
+                        <td className="l" style={{ fontSize: 11 }}>{x.projeto?.nome ?? x.l.projetoId}</td>
+                        <td className="l" style={{ fontSize: 11, whiteSpace: "normal", maxWidth: 260 }}>
+                          {x.tarefa?.nome ?? "—"}
+                        </td>
+                        <td>{labelCompetencia(x.l.competencia)}</td>
+                        <td className="td-val">{fmtH(x.l.horas)}</td>
+                        <td><span className="badge b-amber">A pagar</span></td>
+                      </tr>
+                    ))}
+                    {pendFiltrados.length === 0 && (
+                      <tr><td colSpan={6} className="empty-state">Nenhuma tarefa pendente de pagamento.</td></tr>
+                    )}
+                    {pendFiltrados.length > 50 && (
+                      <tr><td colSpan={6} className="hint" style={{ textAlign: "center" }}>
+                        Mostrando 50 de {pendFiltrados.length}. Use os filtros acima para refinar.
+                      </td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         );
       })()}

@@ -9,9 +9,9 @@ import {
   type LinhaPagavel,
 } from "@/lib/calc";
 import { fmtBRL, fmtBRL2 } from "@/lib/money";
-import { fmtDate, labelCompetencia, todayISO } from "@/lib/dates";
+import { competenciaOf, fmtDate, labelCompetencia, todayISO } from "@/lib/dates";
 import { uuid } from "@/lib/id";
-import type { Consultor, Pagamento } from "@/types";
+import type { Consultor, Lancamento, Pagamento } from "@/types";
 
 const fmtH = (h: number) => h.toFixed(1);
 
@@ -26,6 +26,7 @@ export function Pagamentos() {
 function PagamentosAdmin() {
   const { snap, rateOf, toast, save, remove } = useData();
   const [pagar, setPagar] = useState<Consultor | null>(null);
+  const [editLanc, setEditLanc] = useState<Lancamento | null>(null);
   const [fMes, setFMes] = useState("");
   const [expandidosMes, setExpandidosMes] = useState<Set<string>>(new Set());
 
@@ -164,6 +165,7 @@ function PagamentosAdmin() {
                                 <th style={{ color: "var(--tx3)", fontWeight: 600 }}>Data</th>
                                 <th style={{ color: "var(--tx3)", fontWeight: 600 }}>Horas</th>
                                 <th style={{ color: "var(--tx3)", fontWeight: 600 }}>Situação</th>
+                                <th></th>
                               </tr>
                             </thead>
                             <tbody>
@@ -178,10 +180,23 @@ function PagamentosAdmin() {
                                       ? <span className="badge b-green">Pago</span>
                                       : <span className="badge b-amber">A pagar</span>}
                                   </td>
+                                  <td>
+                                    {m.horasSaldo > 0.001 && (
+                                      <div className="row-actions">
+                                        <button className="btn btn-sm" onClick={() => setEditLanc(l)}>editar</button>
+                                        <button className="btn btn-sm btn-danger" onClick={() => {
+                                          if (confirm(`Excluir lançamento de ${fmtH(l.horas)}h? Esta ação não pode ser desfeita.`)) {
+                                            void remove("lancamentos", l.id);
+                                            toast("Lançamento excluído");
+                                          }
+                                        }}>excluir</button>
+                                      </div>
+                                    )}
+                                  </td>
                                 </tr>
                               ))}
                               {lancsDoMes.length === 0 && (
-                                <tr><td colSpan={5} className="muted">Sem lançamentos neste mês.</td></tr>
+                                <tr><td colSpan={6} className="muted">Sem lançamentos neste mês.</td></tr>
                               )}
                             </tbody>
                           </table>
@@ -245,6 +260,18 @@ function PagamentosAdmin() {
             for (const pg of pagamentos) void save("pagamentos", pg);
             toast(`${pagamentos.length} pagamento(s) registrado(s)`);
             setPagar(null);
+          }}
+        />
+      )}
+      {editLanc && (
+        <EditLancamentoModal
+          lanc={editLanc}
+          nomeTarefa={(id) => snap.tarefas.find((t) => t.id === id)?.nome ?? "—"}
+          onClose={() => setEditLanc(null)}
+          onSave={(updated) => {
+            void save("lancamentos", updated);
+            toast("Lançamento atualizado");
+            setEditLanc(null);
           }}
         />
       )}
@@ -362,6 +389,60 @@ function PagarModal({
 
 function keyOf(l: LinhaPagavel): string {
   return `${l.competencia}||${l.projetoId}`;
+}
+
+// ── Editar lançamento individual ──────────────────────────────
+function EditLancamentoModal({
+  lanc,
+  nomeTarefa,
+  onClose,
+  onSave,
+}: {
+  lanc: Lancamento;
+  nomeTarefa: (id: string | null) => string;
+  onClose: () => void;
+  onSave: (updated: Lancamento) => void;
+}) {
+  const [horas, setHoras] = useState(lanc.horas);
+  const [data, setData] = useState(lanc.data ?? "");
+  const [obs, setObs] = useState(lanc.obs ?? "");
+  const [erro, setErro] = useState("");
+
+  function salvar() {
+    if (horas <= 0) { setErro("Informe as horas."); return; }
+    onSave({ ...lanc, horas, data: data || lanc.data, competencia: data ? competenciaOf(data) : lanc.competencia, obs });
+  }
+
+  return (
+    <Modal
+      title="Editar lançamento"
+      subtitle={nomeTarefa(lanc.tarefaId)}
+      onClose={onClose}
+      actions={
+        <>
+          <button className="btn" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={salvar}>Salvar</button>
+        </>
+      }
+    >
+      <div className="form-grid">
+        <div>
+          <label>Horas</label>
+          <input type="number" step="0.5" min="0.5" value={horas} onChange={(e) => setHoras(Number(e.target.value))} aria-invalid={!!erro} />
+          {erro && <div className="field-error">{erro}</div>}
+        </div>
+        <div>
+          <label>Data</label>
+          <input type="date" value={data} onChange={(e) => setData(e.target.value)} />
+          {data && <div className="hint">Competência: {labelCompetencia(competenciaOf(data))}</div>}
+        </div>
+      </div>
+      <div className="form-full">
+        <label>Observação</label>
+        <input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Descreva o que foi feito" />
+      </div>
+    </Modal>
+  );
 }
 
 // ══════════════════════════════════════════════════════════════
