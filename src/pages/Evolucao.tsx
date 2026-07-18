@@ -29,15 +29,13 @@ interface DRELinhaConfig {
 }
 
 const DRE_LINHAS: DRELinhaConfig[] = [
-  { key: "receita",        label: "Receita Bruta",              bold: true, isReceita: true },
-  { key: "impostos",       label: "(-) Impostos",               indent: true, muted: true },
+  { key: "receita",        label: "Faturamento",                bold: true, isReceita: true },
+  { key: "impostos",       label: "(-) Impostos (17%)",         indent: true, muted: true },
   { key: "comissao",       label: "(-) Comissão",               indent: true, muted: true },
-  { key: "receitaLiq",     label: "= Receita Líquida",          bold: true, sep: true, neg: true },
   { key: "lucroReservado", label: "(-) Lucro desejado",         indent: true, muted: true },
-  { key: "adm",            label: "(-) ADM",                    indent: true, muted: true },
-  { key: "marketing",      label: "(-) Marketing",              indent: true, muted: true },
+  { key: "marketing",      label: "(-) Marketing (3%)",         indent: true, muted: true },
   { key: "custoHoras",     label: "(-) Custo de Horas",         indent: true, muted: true, expandable: true },
-  { key: "custoBase",      label: "(-) Custos Fixos Rateados",  indent: true, muted: true, expandable: true },
+  { key: "custoBase",      label: "(-) Outros Custos",          indent: true, muted: true, expandable: true },
   { key: "totalDespesas",  label: "= Total Despesas",           bold: true, sep: true, red: true },
   { key: "resultado",      label: "= Resultado",                bold: true, sep: true, neg: true },
 ];
@@ -104,7 +102,7 @@ export function Evolucao() {
   );
 
   const comMov = linhas.filter(
-    (l) => l.receita || l.custoHoras || l.custoBase || l.impostos || l.comissao || l.adm || l.marketing,
+    (l) => l.receita || l.custoHoras || l.custoBase || l.impostos || l.comissao || l.marketing,
   );
 
   const total = comMov.reduce<LinhaDRE>(
@@ -199,11 +197,16 @@ export function Evolucao() {
 
   const horasNomes = useMemo(() => [...horasTotal.keys()], [horasTotal]);
 
-  // ── previsão custo horas para meses futuros (baseada em hPrev das tarefas) ───
+  // ── previsão custo horas (meses futuros + mês atual sem lançamentos) ──────────
   const previsaoHorasDetail = useMemo(() => {
+    // Para o mês atual: exclui tarefas que já têm lançamento (evita dupla contagem)
+    const tarefasComLancAtual = new Set(
+      snap.lancamentos.filter((la) => la.competencia === todayComp).map((la) => la.tarefaId),
+    );
     const map = new Map<string, Array<{ nome: string; horas: number; total: number }>>();
     for (const l of comMov) {
-      if (l.comp <= todayComp) continue;
+      if (l.comp < todayComp) continue; // inclui mês atual e futuros
+      const isCurrent = l.comp === todayComp;
       const items = snap.equipe.map((c) => {
         const horas = snap.tarefas
           .filter((t) =>
@@ -212,7 +215,8 @@ export function Evolucao() {
             (t.dtIni !== null || t.dtFim !== null) &&
             competenciaOf(t.dtIni ?? t.dtFim!) === l.comp &&
             t.status !== "Concluída" &&
-            t.ativa !== false,
+            t.ativa !== false &&
+            (!isCurrent || !tarefasComLancAtual.has(t.id)),
           )
           .reduce((s, t) => s + (t.hPrev || 0), 0);
         const total = Math.round(horas * rateOf(c.id));
@@ -221,7 +225,7 @@ export function Evolucao() {
       if (items.length > 0) map.set(l.comp, items);
     }
     return map;
-  }, [comMov, snap.equipe, snap.tarefas, projetoIdSet, rateOf, todayComp]);
+  }, [comMov, snap.equipe, snap.tarefas, snap.lancamentos, projetoIdSet, rateOf, todayComp]);
 
   const previsaoHorasTotal = useMemo(() => {
     const m = new Map<string, { horas: number; total: number }>();
@@ -250,12 +254,13 @@ export function Evolucao() {
     return m;
   }, [previsaoHorasDetail]);
 
-  // total acumulado incluindo previsão em meses futuros sem lançamentos
+  // total acumulado: lançamentos + previsão (mês atual + futuros)
   const totalCustoHorasComPrevisao = useMemo(() => {
     const prevExtra = comMov
       .filter((l) => l.comp > todayComp && l.custoHoras === 0)
       .reduce((s, l) => s + (previsaoCustoHoras.get(l.comp) ?? 0), 0);
-    return total.custoHoras + prevExtra;
+    const prevAtual = previsaoCustoHoras.get(todayComp) ?? 0;
+    return total.custoHoras + prevExtra + prevAtual;
   }, [total.custoHoras, comMov, todayComp, previsaoCustoHoras]);
 
   const nCols = comMov.length + 2;
@@ -275,13 +280,13 @@ export function Evolucao() {
   return (
     <>
       <div className="page-title">Evolução Mensal</div>
-      <div className="page-sub">DRE — receita, deduções e resultado por mês</div>
+      <div className="page-sub">Faturamento, custos e resultado por mês</div>
 
       {/* Cards resumo */}
       <div className="kpi-row" style={{ marginBottom: 16 }}>
-        <Kpi label="Total Receita Bruta"    value={fmtBRL(total.receita)}       />
+        <Kpi label="Total Faturamento"      value={fmtBRL(total.receita)}       />
         <Kpi label="Total Custo de Horas"   value={fmtBRL(total.custoHoras)}    />
-        <Kpi label="Total Custos Rateados"  value={fmtBRL(total.custoBase)}     />
+        <Kpi label="Total Outros Custos"    value={fmtBRL(total.custoBase)}     />
         <Kpi label="Total Despesas"         value={fmtBRL(total.totalDespesas)} />
         <Kpi label="Resultado Acumulado"    value={fmtBRL(total.resultado)}     />
       </div>
@@ -344,16 +349,18 @@ export function Evolucao() {
                       {comMov.map((l) => {
                         if (cfg.key === "custoHoras") {
                           const isFuture = l.comp > todayComp;
+                          const isCurrent = l.comp === todayComp;
                           const actual = l.custoHoras;
                           const prev = previsaoCustoHoras.get(l.comp) ?? 0;
-                          const v = isFuture ? (actual || prev) : actual;
+                          // mês atual: soma lançado + previsto restante; futuros: usa previsão se não houver lançamentos
+                          const v = isCurrent ? actual + prev : isFuture ? (actual || prev) : actual;
                           return (
                             <ValCell
                               key={l.comp}
                               v={v}
                               bold={cfg.bold}
-                              muted={!isFuture && cfg.muted}
-                              amber={isFuture && v > 0}
+                              muted={!isFuture && !isCurrent && cfg.muted}
+                              amber={(isFuture || isCurrent) && prev > 0}
                             />
                           );
                         }
@@ -414,10 +421,13 @@ export function Evolucao() {
                         </td>
                         {comMov.map((l) => {
                           const isFuture = l.comp > todayComp;
+                          const isCurrent = l.comp === todayComp;
                           const actual = horasDetail.get(l.comp)?.find((i) => i.nome === nome);
                           const prev = previsaoHorasDetail.get(l.comp)?.find((i) => i.nome === nome);
-                          const v = isFuture ? (actual?.total || prev?.total || 0) : (actual?.total ?? 0);
-                          return <SubValCell key={l.comp} v={v} amber={isFuture && v > 0} />;
+                          const v = isCurrent
+                            ? (actual?.total ?? 0) + (prev?.total ?? 0)
+                            : isFuture ? (actual?.total || prev?.total || 0) : (actual?.total ?? 0);
+                          return <SubValCell key={l.comp} v={v} amber={(isFuture || isCurrent) && (prev?.total ?? 0) > 0} />;
                         })}
                         <SubValCell v={(horasTotal.get(nome)?.total ?? 0) + (previsaoHorasTotal.get(nome)?.total ?? 0)} />
                       </tr>
@@ -452,10 +462,10 @@ export function Evolucao() {
           </table>
         </div>
         <div style={{ padding: "6px 16px 10px", fontSize: 11, color: "var(--tx3)" }}>
-          Receita Bruta: <span style={{ color: "var(--green)" }}>■ verde = recebida</span> &nbsp;
+          Faturamento: <span style={{ color: "var(--green)" }}>■ verde = recebido</span> &nbsp;
           <span style={{ color: "var(--amber)" }}>■ amarelo = a receber</span>
           &nbsp;&nbsp;·&nbsp;&nbsp;
-          Custo de Horas: <span style={{ color: "var(--amber)" }}>■ amarelo = previsão (meses futuros)</span>
+          Custo de Horas: <span style={{ color: "var(--amber)" }}>■ amarelo = previsão (não lançado)</span>
         </div>
       </div>
     </>

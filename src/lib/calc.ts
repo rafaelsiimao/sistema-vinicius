@@ -392,8 +392,8 @@ export function linhaDRE(
   const receitaLiq = receita - impostos - comissao;
   const custoHoras = projetos.reduce((s, p) => s + custoHorasMesCents(p.id, comp, lancamentos, rateOf), 0);
   const custoBase = projetos.reduce((s, p) => s + custoBaseMesCents(p.id, comp, custos, todosProjetos), 0);
-  const totalDespesas = lucroReservado + adm + marketing + custoHoras + custoBase;
-  const resultado = receitaLiq - totalDespesas;
+  const totalDespesas = impostos + comissao + lucroReservado + adm + marketing + custoHoras + custoBase;
+  const resultado = receita - totalDespesas;
   return { comp, receita, receitaRecebida, impostos, comissao, receitaLiq, lucroReservado, adm, marketing, custoHoras, custoBase, totalDespesas, resultado };
 }
 

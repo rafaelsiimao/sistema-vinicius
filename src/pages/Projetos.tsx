@@ -131,11 +131,11 @@ function ProjetoForm({
     tipo: projeto?.tipo ?? "",
     gerenteId: projeto?.gerenteId ?? "",
     valorReais: projeto ? String(centsToReais(projeto.valorCents)) : "",
-    pctAdm: projeto ? projeto.pctAdm * 100 : 20,
+    pctAdm: 0,
     pctCom: projeto ? projeto.pctCom * 100 : 2,
     pctLucro: projeto ? projeto.pctLucro * 100 : 20,
-    pctImpostos: projeto ? (projeto.pctImpostos ?? 0) * 100 : 0,
-    pctMarketing: projeto ? (projeto.pctMarketing ?? 0) * 100 : 0,
+    pctImpostos: projeto ? (projeto.pctImpostos ?? 0) * 100 : 17,
+    pctMarketing: projeto ? (projeto.pctMarketing ?? 0) * 100 : 3,
     status: projeto?.status ?? ("Planejamento" as ProjetoStatus),
     dtIni: projeto?.dtIni ?? "",
     dtFim: projeto?.dtFim ?? "",
@@ -320,16 +320,6 @@ function ProjetoForm({
       <div className="section-label">Composição de custos</div>
       <div className="form-grid">
         <div>
-          <label>% ADM</label>
-          <input type="number" min="0" max="100" step="0.1" value={form.pctAdm} onChange={(e) => set("pctAdm", Number(e.target.value))} />
-        </div>
-        <div>
-          <label>% Comissão</label>
-          <input type="number" min="0" max="100" step="0.1" value={form.pctCom} onChange={(e) => set("pctCom", Number(e.target.value))} />
-        </div>
-      </div>
-      <div className="form-grid">
-        <div>
           <label>% Impostos</label>
           <input type="number" min="0" max="100" step="0.1" value={form.pctImpostos} onChange={(e) => set("pctImpostos", Number(e.target.value))} />
         </div>
@@ -340,9 +330,15 @@ function ProjetoForm({
       </div>
       <div className="form-grid">
         <div>
+          <label>% Comissão</label>
+          <input type="number" min="0" max="100" step="0.1" value={form.pctCom} onChange={(e) => set("pctCom", Number(e.target.value))} />
+        </div>
+        <div>
           <label>% Lucro desejado</label>
           <input type="number" min="0" max="100" step="0.1" value={form.pctLucro} onChange={(e) => set("pctLucro", Number(e.target.value))} />
         </div>
+      </div>
+      <div className="form-grid">
         <div>
           <label>Disponível p/ horas técnicas</label>
           <input
