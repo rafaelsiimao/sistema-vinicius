@@ -1,170 +1,235 @@
 import { useMemo, useState } from "react";
 import { useData } from "@/store/useData";
-import { Kpi } from "@/ui/primitives";
+import { MultiSelect } from "@/ui/MultiSelect";
 import {
   competenciasDoSistema,
-  custoBaseMesCents,
-  custoHorasMesCents,
-  receitaMesCents,
+  linhaDRE,
+  type LinhaDRE,
 } from "@/lib/calc";
 import { fmtBRL } from "@/lib/money";
 import { currentCompetencia, labelCompetencia, todayISO } from "@/lib/dates";
 
-interface LinhaMes {
-  comp: string;
-  receita: number;
-  custoHoras: number;
-  custoBase: number;
-  resultado: number;
+const fmtPct = (v: number) => `${(v * 100).toFixed(1)}%`;
+
+function ValCell({ v, bold, neg, muted }: { v: number; bold?: boolean; neg?: boolean; muted?: boolean }) {
+  const cor = neg
+    ? v < 0 ? "var(--red)" : v > 0 ? "var(--green)" : "var(--tx3)"
+    : undefined;
+  return (
+    <td
+      className="td-val"
+      style={{
+        fontWeight: bold ? 700 : 400,
+        color: muted ? "var(--tx3)" : cor,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {fmtBRL(v)}
+    </td>
+  );
 }
 
-const fmtPct = (v: number) => `${(v * 100).toFixed(0)}%`;
+interface DRELinhaConfig {
+  key: keyof LinhaDRE | "receitaLiqLabel" | "margemPct";
+  label: string;
+  indent?: boolean;
+  bold?: boolean;
+  sep?: boolean;     // linha de separação antes
+  neg?: boolean;     // verde se positivo, vermelho se negativo
+  muted?: boolean;   // cor fraca (deduções)
+  pct?: boolean;     // exibir como percentual (só total e por mês)
+}
+
+const DRE_LINHAS: DRELinhaConfig[] = [
+  { key: "receita",    label: "Receita Bruta",         bold: true },
+  { key: "impostos",   label: "(-) Impostos",           indent: true, muted: true },
+  { key: "comissao",   label: "(-) Comissão",           indent: true, muted: true },
+  { key: "receitaLiq", label: "= Receita Líquida",      bold: true, sep: true, neg: true },
+  { key: "custoHoras", label: "(-) Custo de Horas",     indent: true, muted: true },
+  { key: "custoBase",  label: "(-) Custos Fixos Rateados", indent: true, muted: true },
+  { key: "adm",        label: "(-) ADM",                indent: true, muted: true },
+  { key: "marketing",  label: "(-) Marketing",          indent: true, muted: true },
+  { key: "resultado",  label: "= Resultado",            bold: true, sep: true, neg: true },
+];
 
 export function Evolucao() {
   const { snap, rateOf } = useData();
   const today = todayISO();
-  const [compSel, setCompSel] = useState(currentCompetencia());
+  const [fProjetos, setFProjetos] = useState<string[]>([]);
 
   const meses = useMemo(() => competenciasDoSistema(snap, today), [snap, today]);
-  const projetos = snap.projetos.filter((p) => p.status !== "Cancelado");
 
-  // Consolidado mês a mês.
-  const linhas: LinhaMes[] = useMemo(
+  const projetosAtivos = snap.projetos.filter((p) => p.status !== "Cancelado");
+  const projetosOpts = projetosAtivos.map((p) => ({
+    value: p.id,
+    label: `${p.id} — ${p.nome || p.cliente}`,
+  }));
+
+  const projetosFiltrados = fProjetos.length
+    ? projetosAtivos.filter((p) => fProjetos.includes(p.id))
+    : projetosAtivos;
+
+  const linhas: LinhaDRE[] = useMemo(
     () =>
-      meses.map((comp) => {
-        const receita = projetos.reduce((s, p) => s + receitaMesCents(p.id, comp, snap.parcelas), 0);
-        const custoHoras = projetos.reduce((s, p) => s + custoHorasMesCents(p.id, comp, snap.lancamentos, rateOf), 0);
-        const custoBase = projetos.reduce((s, p) => s + custoBaseMesCents(p.id, comp, snap.custos, snap.projetos), 0);
-        return { comp, receita, custoHoras, custoBase, resultado: receita - custoHoras - custoBase };
-      }),
-    [meses, projetos, snap.parcelas, snap.lancamentos, snap.custos, snap.projetos, rateOf],
+      meses.map((comp) =>
+        linhaDRE(comp, projetosFiltrados, snap.parcelas, snap.lancamentos, snap.custos, snap.projetos, rateOf),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [meses, fProjetos, snap.parcelas, snap.lancamentos, snap.custos, snap.projetos, rateOf],
   );
 
-  // Só meses com algum movimento, para a tabela e o gráfico não ficarem vazios.
-  const comMovimento = linhas.filter((l) => l.receita || l.custoHoras || l.custoBase);
+  const comMov = linhas.filter(
+    (l) => l.receita || l.custoHoras || l.custoBase || l.impostos || l.comissao || l.adm || l.marketing,
+  );
 
-  const totReceita = comMovimento.reduce((s, l) => s + l.receita, 0);
-  const totCustoHoras = comMovimento.reduce((s, l) => s + l.custoHoras, 0);
-  const totCustoBase = comMovimento.reduce((s, l) => s + l.custoBase, 0);
-  const totResultado = totReceita - totCustoHoras - totCustoBase;
+  const total = comMov.reduce<LinhaDRE>(
+    (acc, l) => ({
+      comp: "Total",
+      receita: acc.receita + l.receita,
+      impostos: acc.impostos + l.impostos,
+      comissao: acc.comissao + l.comissao,
+      receitaLiq: acc.receitaLiq + l.receitaLiq,
+      custoHoras: acc.custoHoras + l.custoHoras,
+      custoBase: acc.custoBase + l.custoBase,
+      adm: acc.adm + l.adm,
+      marketing: acc.marketing + l.marketing,
+      resultado: acc.resultado + l.resultado,
+    }),
+    { comp: "Total", receita: 0, impostos: 0, comissao: 0, receitaLiq: 0, custoHoras: 0, custoBase: 0, adm: 0, marketing: 0, resultado: 0 },
+  );
 
-  // Detalhe por projeto na competência selecionada.
-  const detalhe = projetos
-    .map((p) => {
-      const receita = receitaMesCents(p.id, compSel, snap.parcelas);
-      const custoHoras = custoHorasMesCents(p.id, compSel, snap.lancamentos, rateOf);
-      const custoBase = custoBaseMesCents(p.id, compSel, snap.custos, snap.projetos);
-      return { p, receita, custoHoras, custoBase, resultado: receita - custoHoras - custoBase };
-    })
-    .filter((x) => x.receita || x.custoHoras || x.custoBase)
-    .sort((a, b) => b.resultado - a.resultado);
+  // Seletor de mês para drill-down
+  const [compSel, setCompSel] = useState(currentCompetencia());
 
-  const maxAbs = Math.max(1, ...comMovimento.map((l) => Math.abs(l.resultado)));
+  const getValue = (linha: LinhaDRE, key: keyof LinhaDRE): number =>
+    typeof linha[key] === "number" ? (linha[key] as number) : 0;
 
   return (
     <>
       <div className="page-title">Evolução Mensal</div>
-      <div className="page-sub">Receita, custos e resultado mês a mês</div>
+      <div className="page-sub">DRE — receita, deduções e resultado por mês</div>
 
-      <div className="kpi-row">
-        <Kpi label="Receita (horizonte)" value={fmtBRL(totReceita)} tone="accent" />
-        <Kpi label="Custo de horas" value={fmtBRL(totCustoHoras)} tone="amber" />
-        <Kpi label="Custos rateados" value={fmtBRL(totCustoBase)} tone="red" />
-        <Kpi
-          label="Resultado"
-          value={fmtBRL(totResultado)}
-          tone={totResultado >= 0 ? "green" : "red"}
-          sub={totReceita > 0 ? `margem ${fmtPct(totResultado / totReceita)}` : undefined}
+      <div className="filter-bar">
+        <MultiSelect
+          label="Projeto"
+          options={projetosOpts}
+          selected={fProjetos}
+          onChange={setFProjetos}
+          placeholder="Todos os projetos"
         />
       </div>
 
-      {/* mini-gráfico de resultado por mês */}
+      {/* DRE horizontal — meses nas colunas */}
       <div className="tbl-wrap">
-        <div className="tbl-title">Resultado por mês</div>
-        <div style={{ padding: 16, overflowX: "auto" }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", minHeight: 150 }}>
-            {comMovimento.map((l) => {
-              const h = Math.round((Math.abs(l.resultado) / maxAbs) * 120);
-              const pos = l.resultado >= 0;
-              return (
-                <div key={l.comp} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 42 }} title={`${labelCompetencia(l.comp)}: ${fmtBRL(l.resultado)}`}>
-                  <div style={{ fontSize: 9, color: pos ? "var(--green)" : "var(--red)", fontFamily: "Roboto Mono, monospace", marginBottom: 3 }}>
-                    {Math.round(l.resultado / 100)}
-                  </div>
-                  <div
-                    style={{
-                      width: 26,
-                      height: Math.max(3, h),
-                      background: pos ? "var(--green)" : "var(--red)",
-                      borderRadius: 3,
-                      opacity: 0.85,
-                    }}
-                  />
-                  <div style={{ fontSize: 9, color: "var(--tx3)", marginTop: 4, fontFamily: "Roboto Mono, monospace" }}>
-                    {labelCompetencia(l.comp)}
-                  </div>
-                </div>
-              );
-            })}
-            {comMovimento.length === 0 && <div className="muted">Sem movimento financeiro ainda.</div>}
-          </div>
-          <div className="hint" style={{ marginTop: 8 }}>Valores em R$ (centenas) — verde = lucro, vermelho = prejuízo no mês.</div>
-        </div>
-      </div>
-
-      {/* tabela consolidada */}
-      <div className="tbl-wrap">
-        <div className="tbl-title">Consolidado mensal</div>
+        <div className="tbl-title">DRE — meses na horizontal</div>
         <div className="scroll-x">
-          <table>
+          <table style={{ minWidth: comMov.length * 110 + 220 }}>
             <thead>
               <tr>
-                <th className="l">Mês</th>
-                <th>Receita</th>
-                <th>Custo horas</th>
-                <th>Custos rateados</th>
-                <th>Resultado</th>
-                <th>Margem</th>
+                <th className="l" style={{ minWidth: 200, position: "sticky", left: 0, background: "var(--panel)", zIndex: 2 }}>
+                  Indicador
+                </th>
+                <th style={{ background: "var(--accent2)", color: "#fff", fontWeight: 700, minWidth: 110 }}>
+                  TOTAL
+                </th>
+                {comMov.map((l) => (
+                  <th
+                    key={l.comp}
+                    style={{ minWidth: 110, cursor: "pointer", color: l.comp === compSel ? "var(--accent2)" : undefined }}
+                    onClick={() => setCompSel(l.comp)}
+                    title="Clique para ver detalhe por projeto"
+                  >
+                    {labelCompetencia(l.comp)}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {comMovimento.map((l) => (
-                <tr key={l.comp} style={{ cursor: "pointer" }} onClick={() => setCompSel(l.comp)}>
-                  <td className="l td-name">{labelCompetencia(l.comp)}</td>
-                  <td className="td-val">{fmtBRL(l.receita)}</td>
-                  <td className="td-val" style={{ color: "var(--amber)" }}>{fmtBRL(l.custoHoras)}</td>
-                  <td className="td-val" style={{ color: "var(--red)" }}>{fmtBRL(l.custoBase)}</td>
-                  <td className="td-val" style={{ color: l.resultado >= 0 ? "var(--green)" : "var(--red)", fontWeight: 700 }}>{fmtBRL(l.resultado)}</td>
-                  <td className="td-val muted">{l.receita > 0 ? fmtPct(l.resultado / l.receita) : "—"}</td>
+              {DRE_LINHAS.map((cfg) => (
+                <tr
+                  key={cfg.key}
+                  style={{
+                    borderTop: cfg.sep ? "2px solid var(--border)" : undefined,
+                    background: cfg.bold ? "rgba(255,255,255,0.03)" : undefined,
+                  }}
+                >
+                  <td
+                    className="l"
+                    style={{
+                      position: "sticky",
+                      left: 0,
+                      background: cfg.bold ? "var(--panel2)" : "var(--panel)",
+                      zIndex: 1,
+                      fontWeight: cfg.bold ? 700 : 400,
+                      color: cfg.muted ? "var(--tx3)" : "var(--tx1)",
+                      paddingLeft: cfg.indent ? 24 : undefined,
+                      fontSize: cfg.bold ? 13 : 12,
+                    }}
+                  >
+                    {cfg.label}
+                  </td>
+                  {/* coluna TOTAL */}
+                  <ValCell
+                    v={getValue(total, cfg.key as keyof LinhaDRE)}
+                    bold={cfg.bold}
+                    neg={cfg.neg}
+                    muted={cfg.muted}
+                  />
+                  {/* colunas por mês */}
+                  {comMov.map((l) => (
+                    <ValCell
+                      key={l.comp}
+                      v={getValue(l, cfg.key as keyof LinhaDRE)}
+                      bold={cfg.bold}
+                      neg={cfg.neg}
+                      muted={cfg.muted}
+                    />
+                  ))}
                 </tr>
               ))}
-              {comMovimento.length === 0 && (
-                <tr><td colSpan={6} className="empty-state">Sem lançamentos, parcelas ou custos ainda.</td></tr>
+              {/* linha de margem (%) */}
+              <tr style={{ borderTop: "1px solid var(--border)" }}>
+                <td
+                  className="l"
+                  style={{
+                    position: "sticky", left: 0, background: "var(--panel)", zIndex: 1,
+                    color: "var(--tx3)", fontSize: 12,
+                  }}
+                >
+                  Margem %
+                </td>
+                <td className="td-val muted" style={{ fontSize: 11 }}>
+                  {total.receita > 0 ? fmtPct(total.resultado / total.receita) : "—"}
+                </td>
+                {comMov.map((l) => (
+                  <td key={l.comp} className="td-val muted" style={{ fontSize: 11 }}>
+                    {l.receita > 0 ? fmtPct(l.resultado / l.receita) : "—"}
+                  </td>
+                ))}
+              </tr>
+              {comMov.length === 0 && (
+                <tr>
+                  <td colSpan={2} className="empty-state">
+                    Sem lançamentos, parcelas ou custos ainda.
+                  </td>
+                </tr>
               )}
             </tbody>
-            {comMovimento.length > 0 && (
-              <tfoot>
-                <tr style={{ borderTop: "2px solid var(--border)" }}>
-                  <td className="l" style={{ fontWeight: 700 }}>Total</td>
-                  <td className="td-val" style={{ fontWeight: 700 }}>{fmtBRL(totReceita)}</td>
-                  <td className="td-val" style={{ fontWeight: 700, color: "var(--amber)" }}>{fmtBRL(totCustoHoras)}</td>
-                  <td className="td-val" style={{ fontWeight: 700, color: "var(--red)" }}>{fmtBRL(totCustoBase)}</td>
-                  <td className="td-val" style={{ fontWeight: 700, color: totResultado >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(totResultado)}</td>
-                  <td className="td-val muted">{totReceita > 0 ? fmtPct(totResultado / totReceita) : "—"}</td>
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
-        <div className="hint" style={{ padding: "0 16px 12px" }}>Clique num mês para ver o detalhe por projeto abaixo.</div>
+        <div className="hint" style={{ padding: "0 16px 12px" }}>
+          Clique no mês para ver detalhe por projeto abaixo.
+        </div>
       </div>
 
       {/* detalhe por projeto na competência selecionada */}
       <div className="tbl-wrap">
         <div className="tbl-title">
-          Detalhe por projeto
+          Detalhe por projeto —{" "}
           <select value={compSel} onChange={(e) => setCompSel(e.target.value)} style={{ width: "auto" }}>
-            {meses.map((m) => (<option key={m} value={m}>{labelCompetencia(m)}</option>))}
+            {meses.map((m) => (
+              <option key={m} value={m}>{labelCompetencia(m)}</option>
+            ))}
           </select>
         </div>
         <div className="scroll-x">
@@ -173,24 +238,46 @@ export function Evolucao() {
               <tr>
                 <th className="l">Projeto</th>
                 <th>Receita</th>
-                <th>Custo horas</th>
-                <th>Custos rateados</th>
+                <th>Impostos</th>
+                <th>Comissão</th>
+                <th>Rec. Líquida</th>
+                <th>Custo Horas</th>
+                <th>Fixos Rateados</th>
+                <th>ADM</th>
+                <th>Marketing</th>
                 <th>Resultado</th>
               </tr>
             </thead>
             <tbody>
-              {detalhe.map(({ p, receita, custoHoras, custoBase, resultado }) => (
-                <tr key={p.id}>
-                  <td className="l td-name">{p.id} — {p.nome}</td>
-                  <td className="td-val">{fmtBRL(receita)}</td>
-                  <td className="td-val" style={{ color: "var(--amber)" }}>{fmtBRL(custoHoras)}</td>
-                  <td className="td-val" style={{ color: "var(--red)" }}>{fmtBRL(custoBase)}</td>
-                  <td className="td-val" style={{ color: resultado >= 0 ? "var(--green)" : "var(--red)", fontWeight: 700 }}>{fmtBRL(resultado)}</td>
-                </tr>
-              ))}
-              {detalhe.length === 0 && (
-                <tr><td colSpan={5} className="empty-state">Nada em {labelCompetencia(compSel)}.</td></tr>
-              )}
+              {(() => {
+                const rows = projetosFiltrados
+                  .map((p) => ({ p, l: linhaDRE(compSel, [p], snap.parcelas, snap.lancamentos, snap.custos, snap.projetos, rateOf) }))
+                  .filter(({ l }) => l.receita || l.custoHoras || l.custoBase)
+                  .sort((a, b) => b.l.resultado - a.l.resultado);
+                if (!rows.length) {
+                  return (
+                    <tr>
+                      <td colSpan={10} className="empty-state">Nada em {labelCompetencia(compSel)}.</td>
+                    </tr>
+                  );
+                }
+                return rows.map(({ p, l }) => (
+                  <tr key={p.id}>
+                    <td className="l td-name">{p.id} — {p.nome || p.cliente}</td>
+                    <td className="td-val">{fmtBRL(l.receita)}</td>
+                    <td className="td-val muted">{fmtBRL(l.impostos)}</td>
+                    <td className="td-val muted">{fmtBRL(l.comissao)}</td>
+                    <td className="td-val" style={{ fontWeight: 700 }}>{fmtBRL(l.receitaLiq)}</td>
+                    <td className="td-val" style={{ color: "var(--amber)" }}>{fmtBRL(l.custoHoras)}</td>
+                    <td className="td-val" style={{ color: "var(--red)" }}>{fmtBRL(l.custoBase)}</td>
+                    <td className="td-val muted">{fmtBRL(l.adm)}</td>
+                    <td className="td-val muted">{fmtBRL(l.marketing)}</td>
+                    <td className="td-val" style={{ fontWeight: 700, color: l.resultado >= 0 ? "var(--green)" : "var(--red)" }}>
+                      {fmtBRL(l.resultado)}
+                    </td>
+                  </tr>
+                ));
+              })()}
             </tbody>
           </table>
         </div>

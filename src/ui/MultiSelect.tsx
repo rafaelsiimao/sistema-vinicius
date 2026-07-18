@@ -1,0 +1,139 @@
+import { useEffect, useRef, useState } from "react";
+
+interface Option {
+  value: string;
+  label: string;
+}
+
+interface MultiSelectProps {
+  label: string;
+  options: Option[];
+  /** Valores selecionados. Array vazio = "Todos". */
+  selected: string[];
+  onChange: (values: string[]) => void;
+  placeholder?: string;
+}
+
+export function MultiSelect({ label, options, selected, onChange, placeholder = "Todos" }: MultiSelectProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const all = selected.length === 0;
+  const displayText = all
+    ? placeholder
+    : selected.length === 1
+      ? options.find((o) => o.value === selected[0])?.label ?? selected[0]
+      : `${selected.length} selecionados`;
+
+  function toggleAll() {
+    onChange([]);
+  }
+
+  function toggleOption(value: string) {
+    if (selected.includes(value)) {
+      const next = selected.filter((v) => v !== value);
+      onChange(next);
+    } else {
+      onChange([...selected, value]);
+    }
+  }
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block", minWidth: 160 }}>
+      <label style={{ display: "block", marginBottom: 4, fontSize: 11, color: "var(--tx3)", fontWeight: 600, textTransform: "uppercase" }}>
+        {label}
+      </label>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          width: "100%",
+          minHeight: 34,
+          background: "var(--panel2)",
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          color: all ? "var(--tx3)" : "var(--tx1)",
+          padding: "0 28px 0 10px",
+          textAlign: "left",
+          cursor: "pointer",
+          fontSize: 13,
+          position: "relative",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {displayText}
+        <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", color: "var(--tx3)", fontSize: 10 }}>
+          {open ? "▲" : "▼"}
+        </span>
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            zIndex: 200,
+            background: "var(--panel)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            minWidth: "100%",
+            maxHeight: 260,
+            overflowY: "auto",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          }}
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 12px",
+              cursor: "pointer",
+              borderBottom: "1px solid var(--border)",
+              fontWeight: 700,
+              fontSize: 12,
+            }}
+          >
+            <input type="checkbox" checked={all} onChange={toggleAll} style={{ width: "auto", margin: 0 }} />
+            Todos
+          </label>
+          {options.map((o) => (
+            <label
+              key={o.value}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "7px 12px",
+                cursor: "pointer",
+                fontSize: 12,
+                borderBottom: "1px solid var(--border)",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(o.value)}
+                onChange={() => toggleOption(o.value)}
+                style={{ width: "auto", margin: 0 }}
+              />
+              {o.label}
+            </label>
+          ))}
+          {options.length === 0 && (
+            <div style={{ padding: "8px 12px", color: "var(--tx3)", fontSize: 12 }}>Sem opções.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

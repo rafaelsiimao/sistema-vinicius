@@ -134,6 +134,8 @@ function ProjetoForm({
     pctAdm: projeto ? projeto.pctAdm * 100 : 20,
     pctCom: projeto ? projeto.pctCom * 100 : 2,
     pctLucro: projeto ? projeto.pctLucro * 100 : 20,
+    pctImpostos: projeto ? (projeto.pctImpostos ?? 0) * 100 : 0,
+    pctMarketing: projeto ? (projeto.pctMarketing ?? 0) * 100 : 0,
     status: projeto?.status ?? ("Planejamento" as ProjetoStatus),
     dtIni: projeto?.dtIni ?? "",
     dtFim: projeto?.dtFim ?? "",
@@ -147,7 +149,7 @@ function ProjetoForm({
 
   const valorCents = reaisToCents(form.valorReais || "0");
   const dispCents = Math.round(
-    valorCents * (1 - form.pctAdm / 100 - form.pctCom / 100 - form.pctLucro / 100),
+    valorCents * (1 - form.pctAdm / 100 - form.pctCom / 100 - form.pctLucro / 100 - form.pctImpostos / 100 - form.pctMarketing / 100),
   );
 
   const preview = useMemo(
@@ -186,6 +188,8 @@ function ProjetoForm({
       pctAdm: form.pctAdm / 100,
       pctCom: form.pctCom / 100,
       pctLucro: form.pctLucro / 100,
+      pctImpostos: form.pctImpostos / 100,
+      pctMarketing: form.pctMarketing / 100,
       status: form.status,
       dtIni: form.dtIni || null,
       dtFim: form.dtFim || null,
@@ -317,17 +321,27 @@ function ProjetoForm({
       <div className="form-grid">
         <div>
           <label>% ADM</label>
-          <input type="number" value={form.pctAdm} onChange={(e) => set("pctAdm", Number(e.target.value))} />
+          <input type="number" min="0" max="100" step="0.1" value={form.pctAdm} onChange={(e) => set("pctAdm", Number(e.target.value))} />
         </div>
         <div>
           <label>% Comissão</label>
-          <input type="number" value={form.pctCom} onChange={(e) => set("pctCom", Number(e.target.value))} />
+          <input type="number" min="0" max="100" step="0.1" value={form.pctCom} onChange={(e) => set("pctCom", Number(e.target.value))} />
+        </div>
+      </div>
+      <div className="form-grid">
+        <div>
+          <label>% Impostos</label>
+          <input type="number" min="0" max="100" step="0.1" value={form.pctImpostos} onChange={(e) => set("pctImpostos", Number(e.target.value))} />
+        </div>
+        <div>
+          <label>% Marketing</label>
+          <input type="number" min="0" max="100" step="0.1" value={form.pctMarketing} onChange={(e) => set("pctMarketing", Number(e.target.value))} />
         </div>
       </div>
       <div className="form-grid">
         <div>
           <label>% Lucro desejado</label>
-          <input type="number" value={form.pctLucro} onChange={(e) => set("pctLucro", Number(e.target.value))} />
+          <input type="number" min="0" max="100" step="0.1" value={form.pctLucro} onChange={(e) => set("pctLucro", Number(e.target.value))} />
         </div>
         <div>
           <label>Disponível p/ horas técnicas</label>

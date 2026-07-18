@@ -1,21 +1,67 @@
 import { useMemo, useState } from "react";
 import { useData } from "@/store/useData";
 import { Modal } from "@/ui/Modal";
-import { competenciaOf, fmtDate, labelCompetencia, todayISO } from "@/lib/dates";
+import { MultiSelect } from "@/ui/MultiSelect";
+import { addMonths, competenciaOf, fmtDate, labelCompetencia, todayISO } from "@/lib/dates";
 import { uuid } from "@/lib/id";
-import type { Lancamento, Tarefa, TarefaStatus } from "@/types";
+import type { Consultor, Lancamento, Projeto, Tarefa, TarefaStatus } from "@/types";
 
 const STATUS_TAREFA: TarefaStatus[] = ["Não Iniciada", "Em Andamento", "Concluída", "Pausada"];
 const fmtH = (h: number) => h.toFixed(1);
 
+type Recorrencia = "diaria" | "semanal" | "mensal" | "anual";
+
+// ─── permissões ──────────────────────────────────────────────────
+function podeEditarTarefa(t: Tarefa, user: Consultor | null, isAdmin: boolean, projetos: Projeto[]): boolean {
+  if (isAdmin) return true;
+  if (!user) return false;
+  if (t.respId === user.id) return true;
+  return projetos.find((p) => p.id === t.projetoId)?.gerenteId === user.id;
+}
+
+function podeCriarNoProjeto(projetoId: string, user: Consultor | null, isAdmin: boolean, projetos: Projeto[]): boolean {
+  if (isAdmin) return true;
+  if (!user) return false;
+  return projetos.find((p) => p.id === projetoId)?.gerenteId === user.id;
+}
+
+function podeExcluirTodas(projetoId: string, user: Consultor | null, isAdmin: boolean, projetos: Projeto[]): boolean {
+  if (isAdmin) return true;
+  if (!user) return false;
+  return projetos.find((p) => p.id === projetoId)?.gerenteId === user.id;
+}
+
+// ─── datas para recorrência ───────────────────────────────────────
+function proximaData(dtIso: string, tipo: Recorrencia): string {
+  const d = new Date(dtIso + "T00:00:00");
+  switch (tipo) {
+    case "diaria":  d.setDate(d.getDate() + 1); break;
+    case "semanal": d.setDate(d.getDate() + 7); break;
+    case "mensal":  return addMonths(dtIso, 1);
+    case "anual":   d.setFullYear(d.getFullYear() + 1); break;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 export function Tarefas() {
   const { snap, currentUser, isAdmin, save, remove, toast } = useData();
-  const [fProjeto, setFProjeto] = useState("");
-  const [fMes, setFMes] = useState("");
-  const [fStatus, setFStatus] = useState("");
+
+  // projetos não cancelados para filtros e formulário
+  const projetosAtivos = useMemo(
+    () => snap.projetos.filter((p) => p.status !== "Cancelado"),
+    [snap.projetos],
+  );
+
+  const [fProjetos, setFProjetos] = useState<string[]>([]);
+  const [fMes, setFMes] = useState<string[]>([]);
+  const [fStatus, setFStatus] = useState<string[]>([]);
   const [lancar, setLancar] = useState<Tarefa | null>(null);
   const [editar, setEditar] = useState<Tarefa | null>(null);
   const [criar, setCriar] = useState(false);
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+
+  const projetosOpts = projetosAtivos.map((p) => ({ value: p.id, label: `${p.id} — ${p.nome || p.cliente}` }));
+  const statusOpts = STATUS_TAREFA.map((s) => ({ value: s, label: s }));
 
   const nomeProjeto = useMemo(() => {
     const m = new Map(snap.projetos.map((p) => [p.id, p.nome || p.cliente]));
@@ -38,55 +84,83 @@ export function Tarefas() {
     () => [...new Set(snap.tarefas.map((t) => (t.dtIni ? competenciaOf(t.dtIni) : "")).filter(Boolean))].sort(),
     [snap.tarefas],
   );
+  const mesesOpts = mesesDisponiveis.map((m) => ({ value: m, label: labelCompetencia(m) }));
+
+  // IDs de projetos cancelados (para ocultar tarefas)
+  const projetosCancelados = useMemo(
+    () => new Set(snap.projetos.filter((p) => p.status === "Cancelado").map((p) => p.id)),
+    [snap.projetos],
+  );
 
   const tarefas = useMemo(() => {
     return snap.tarefas
-      .filter((t) => (isAdmin ? true : t.respId === currentUser?.id))
-      .filter((t) => (fProjeto ? t.projetoId === fProjeto : true))
-      .filter((t) => (fMes ? t.dtIni?.slice(0, 7) === fMes : true))
-      .filter((t) => (fStatus ? t.status === fStatus : true))
+      .filter((t) => !projetosCancelados.has(t.projetoId))
+      .filter((t) => (isAdmin ? true : t.respId === currentUser?.id || podeEditarTarefa(t, currentUser, isAdmin, snap.projetos)))
+      .filter((t) => (fProjetos.length ? fProjetos.includes(t.projetoId) : true))
+      .filter((t) => (fMes.length ? (t.dtIni ? fMes.includes(t.dtIni.slice(0, 7)) : false) : true))
+      .filter((t) => (fStatus.length ? fStatus.includes(t.status) : true))
       .sort((a, b) => (a.dtIni ?? "").localeCompare(b.dtIni ?? ""));
-  }, [snap.tarefas, isAdmin, currentUser?.id, fProjeto, fMes, fStatus]);
+  }, [snap.tarefas, projetosCancelados, isAdmin, currentUser, fProjetos, fMes, fStatus, snap.projetos]);
+
+  const todasSelecionadas = tarefas.length > 0 && tarefas.every((t) => selecionadas.has(t.id));
+
+  function toggleTarefa(id: string) {
+    setSelecionadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleTodas() {
+    if (todasSelecionadas) {
+      setSelecionadas(new Set());
+    } else {
+      setSelecionadas(new Set(tarefas.map((t) => t.id)));
+    }
+  }
+
+  async function excluirSelecionadas() {
+    const ids = [...selecionadas];
+    for (const id of ids) {
+      const t = snap.tarefas.find((x) => x.id === id);
+      if (!t) continue;
+      // verifica permissão por tarefa
+      if (!podeEditarTarefa(t, currentUser, isAdmin, snap.projetos)) continue;
+      if (snap.lancamentos.some((l) => l.tarefaId === id)) {
+        toast(`"${t.nome}" tem horas lançadas — inative em vez de excluir`, "err");
+        continue;
+      }
+      await remove("tarefas", id);
+    }
+    toast(`${ids.length} tarefa(s) processada(s)`);
+    setSelecionadas(new Set());
+  }
 
   function mudarStatus(t: Tarefa, status: TarefaStatus) {
     void save("tarefas", { ...t, status });
   }
 
+  // Consultor pode criar se for gerente de algum projeto ativo
+  const podeVerBotaoNovo = isAdmin || projetosAtivos.some((p) => p.gerenteId === currentUser?.id);
+
   return (
     <>
       <div className="page-title">Tarefas</div>
       <div className="page-sub">
-        {isAdmin ? "Todas as tarefas — lançamento de horas e andamento" : "Minhas tarefas — lance horas e atualize o andamento"}
+        {isAdmin ? "Todas as tarefas — lançamento de horas e andamento" : "Suas tarefas e as dos projetos que você gerencia"}
       </div>
 
       <div className="filter-bar">
-        {isAdmin && (
-          <select value={fProjeto} onChange={(e) => setFProjeto(e.target.value)}>
-            <option value="">Projeto: todos</option>
-            {snap.projetos.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.id} — {p.nome || p.cliente}
-              </option>
-            ))}
-          </select>
+        <MultiSelect label="Projeto" options={projetosOpts} selected={fProjetos} onChange={setFProjetos} placeholder="Todos" />
+        <MultiSelect label="Mês" options={mesesOpts} selected={fMes} onChange={setFMes} placeholder="Todos" />
+        <MultiSelect label="Status" options={statusOpts} selected={fStatus} onChange={setFStatus} placeholder="Todos" />
+        {selecionadas.size > 0 && (
+          <button className="btn btn-danger" onClick={() => void excluirSelecionadas()}>
+            Excluir selecionadas ({selecionadas.size})
+          </button>
         )}
-        <select value={fMes} onChange={(e) => setFMes(e.target.value)}>
-          <option value="">Mês: todos</option>
-          {mesesDisponiveis.map((m) => (
-            <option key={m} value={m}>
-              {labelCompetencia(m)}
-            </option>
-          ))}
-        </select>
-        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-          <option value="">Status: todos</option>
-          {STATUS_TAREFA.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        {isAdmin && (
+        {podeVerBotaoNovo && (
           <button className="btn btn-primary" onClick={() => setCriar(true)}>
             + Nova tarefa
           </button>
@@ -98,7 +172,16 @@ export function Tarefas() {
           <table>
             <thead>
               <tr>
-                <th className="l" style={{ minWidth: 280 }}>Tarefa</th>
+                <th style={{ width: 32 }}>
+                  <input
+                    type="checkbox"
+                    checked={todasSelecionadas}
+                    onChange={toggleTodas}
+                    style={{ width: "auto" }}
+                    title="Selecionar todas"
+                  />
+                </th>
+                <th className="l" style={{ minWidth: 240 }}>Tarefa</th>
                 <th className="l">Projeto</th>
                 <th className="l">Resp.</th>
                 <th>Período</th>
@@ -109,48 +192,54 @@ export function Tarefas() {
               </tr>
             </thead>
             <tbody>
-              {tarefas.map((t) => (
-                <tr key={t.id} className={t.ativa ? "" : "row-inactive"}>
-                  <td className="l td-name" style={{ whiteSpace: "normal" }}>{t.nome}</td>
-                  <td className="l" style={{ fontSize: 11 }}>{nomeProjeto(t.projetoId)}</td>
-                  <td className="l" style={{ fontSize: 11 }}>{nomeConsultor(t.respId)}</td>
-                  <td style={{ fontSize: 10 }} className="muted">{fmtDate(t.dtIni)}</td>
-                  <td>
-                    <select
-                      value={t.status}
-                      onChange={(e) => mudarStatus(t, e.target.value as TarefaStatus)}
-                      style={{ width: "auto", fontSize: 11, padding: "3px 6px" }}
-                      aria-label="Status da tarefa"
-                    >
-                      {STATUS_TAREFA.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="td-val">{fmtH(t.hPrev)}</td>
-                  <td className="td-val" style={{ color: horasLancadas(t.id) > 0 ? "var(--accent2)" : "var(--tx3)", fontWeight: horasLancadas(t.id) > 0 ? 700 : 400 }}>
-                    {fmtH(horasLancadas(t.id))}
-                  </td>
-                  <td>
-                    <div className="row-actions">
-                      <button className="btn btn-sm" onClick={() => setLancar(t)}>
-                        lançar horas
-                      </button>
-                      {isAdmin && (
-                        <button className="btn btn-sm" onClick={() => setEditar(t)}>
-                          editar
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {tarefas.map((t) => {
+                const podeEditar = podeEditarTarefa(t, currentUser, isAdmin, snap.projetos);
+                return (
+                  <tr key={t.id} className={t.ativa ? "" : "row-inactive"}>
+                    <td style={{ textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={selecionadas.has(t.id)}
+                        onChange={() => toggleTarefa(t.id)}
+                        style={{ width: "auto" }}
+                      />
+                    </td>
+                    <td className="l td-name" style={{ whiteSpace: "normal" }}>{t.nome}</td>
+                    <td className="l" style={{ fontSize: 11 }}>{nomeProjeto(t.projetoId)}</td>
+                    <td className="l" style={{ fontSize: 11 }}>{nomeConsultor(t.respId)}</td>
+                    <td style={{ fontSize: 10 }} className="muted">{fmtDate(t.dtIni)}</td>
+                    <td>
+                      <select
+                        value={t.status}
+                        onChange={(e) => mudarStatus(t, e.target.value as TarefaStatus)}
+                        style={{ width: "auto", fontSize: 11, padding: "3px 6px" }}
+                        aria-label="Status da tarefa"
+                        disabled={!podeEditar}
+                      >
+                        {STATUS_TAREFA.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="td-val">{fmtH(t.hPrev)}</td>
+                    <td className="td-val" style={{ color: horasLancadas(t.id) > 0 ? "var(--accent2)" : "var(--tx3)", fontWeight: horasLancadas(t.id) > 0 ? 700 : 400 }}>
+                      {fmtH(horasLancadas(t.id))}
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        <button className="btn btn-sm" onClick={() => setLancar(t)}>lançar horas</button>
+                        {podeEditar && (
+                          <button className="btn btn-sm" onClick={() => setEditar(t)}>editar</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {tarefas.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="empty-state">
-                    {isAdmin ? "Nenhuma tarefa com os filtros." : "Você não tem tarefas atribuídas para os filtros atuais."}
+                  <td colSpan={9} className="empty-state">
+                    {isAdmin ? "Nenhuma tarefa com os filtros." : "Você não tem tarefas visíveis com os filtros atuais."}
                   </td>
                 </tr>
               )}
@@ -163,18 +252,22 @@ export function Tarefas() {
         <LancarHorasModal
           tarefa={lancar}
           onClose={() => setLancar(null)}
-          onSave={(l) => {
-            void save("lancamentos", l);
-            toast(`${fmtH(l.horas)}h lançadas`);
-            setLancar(null);
-          }}
+          onSave={(l) => { void save("lancamentos", l); toast(`${fmtH(l.horas)}h lançadas`); setLancar(null); }}
         />
       )}
       {(criar || editar) && (
         <TarefaFormModal
           tarefa={editar}
+          projetosAtivos={projetosAtivos}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
           onClose={() => { setCriar(false); setEditar(null); }}
-          onSave={(t) => { void save("tarefas", t); toast("Tarefa salva"); setCriar(false); setEditar(null); }}
+          onSave={(tarefas) => {
+            for (const t of tarefas) void save("tarefas", t);
+            toast(tarefas.length > 1 ? `${tarefas.length} tarefas criadas` : "Tarefa salva");
+            setCriar(false);
+            setEditar(null);
+          }}
           onDelete={editar ? () => {
             const temHoras = snap.lancamentos.some((l) => l.tarefaId === editar.id);
             if (temHoras) { toast("Tarefa tem horas lançadas — inative em vez de excluir", "err"); return; }
@@ -182,23 +275,16 @@ export function Tarefas() {
             toast("Tarefa excluída");
             setEditar(null);
           } : undefined}
+          podeExcluirTodas={editar ? podeExcluirTodas(editar.projetoId, currentUser, isAdmin, snap.projetos) : false}
         />
       )}
     </>
   );
 }
 
-function LancarHorasModal({
-  tarefa,
-  onClose,
-  onSave,
-}: {
-  tarefa: Tarefa;
-  onClose: () => void;
-  onSave: (l: Lancamento) => void;
-}) {
+// ─── Lançar Horas ────────────────────────────────────────────────
+function LancarHorasModal({ tarefa, onClose, onSave }: { tarefa: Tarefa; onClose: () => void; onSave: (l: Lancamento) => void }) {
   const { snap, currentUser, isAdmin } = useData();
-  // Consultor lança como ele mesmo; admin pode escolher.
   const [consultorId, setConsultorId] = useState(
     isAdmin ? tarefa.respId ?? currentUser?.id ?? snap.equipe[0]?.id ?? "" : currentUser?.id ?? "",
   );
@@ -210,16 +296,7 @@ function LancarHorasModal({
   function salvar() {
     if (!consultorId) { setErro("Selecione o consultor."); return; }
     if (horas <= 0) { setErro("Informe as horas."); return; }
-    onSave({
-      id: uuid(),
-      projetoId: tarefa.projetoId,
-      tarefaId: tarefa.id,
-      consultorId,
-      competencia: competenciaOf(data),
-      horas,
-      data,
-      obs: obs.trim(),
-    });
+    onSave({ id: uuid(), projetoId: tarefa.projetoId, tarefaId: tarefa.id, consultorId, competencia: competenciaOf(data), horas, data, obs: obs.trim() });
   }
 
   return (
@@ -227,21 +304,14 @@ function LancarHorasModal({
       title="Lançar horas"
       subtitle={tarefa.nome}
       onClose={onClose}
-      actions={
-        <>
-          <button className="btn" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={salvar}>Lançar</button>
-        </>
-      }
+      actions={<><button className="btn" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={salvar}>Lançar</button></>}
     >
       <div className="form-grid">
         <div>
           <label>Consultor</label>
           {isAdmin ? (
             <select value={consultorId} onChange={(e) => setConsultorId(e.target.value)}>
-              {snap.equipe.map((c) => (
-                <option key={c.id} value={c.id}>{c.nome}</option>
-              ))}
+              {snap.equipe.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
             </select>
           ) : (
             <input value={currentUser?.nome ?? ""} readOnly />
@@ -266,19 +336,34 @@ function LancarHorasModal({
   );
 }
 
+// ─── Formulário de Tarefa ─────────────────────────────────────────
 function TarefaFormModal({
   tarefa,
+  projetosAtivos,
+  currentUser,
+  isAdmin,
   onClose,
   onSave,
   onDelete,
+  podeExcluirTodas: _podeExcluirTodas,
 }: {
   tarefa: Tarefa | null;
+  projetosAtivos: Projeto[];
+  currentUser: Consultor | null;
+  isAdmin: boolean;
   onClose: () => void;
-  onSave: (t: Tarefa) => void;
+  onSave: (tarefas: Tarefa[]) => void;
   onDelete?: () => void;
+  podeExcluirTodas: boolean;
 }) {
   const { snap } = useData();
-  const [projetoId, setProjetoId] = useState(tarefa?.projetoId ?? snap.projetos[0]?.id ?? "");
+
+  // Projetos disponíveis para este usuário criar tarefas
+  const projetosDisp = isAdmin
+    ? projetosAtivos
+    : projetosAtivos.filter((p) => podeCriarNoProjeto(p.id, currentUser, isAdmin, projetosAtivos));
+
+  const [projetoId, setProjetoId] = useState(tarefa?.projetoId ?? projetosDisp[0]?.id ?? "");
   const [nome, setNome] = useState(tarefa?.nome ?? "");
   const [respId, setRespId] = useState(tarefa?.respId ?? "");
   const [status, setStatus] = useState<TarefaStatus>(tarefa?.status ?? "Não Iniciada");
@@ -288,10 +373,16 @@ function TarefaFormModal({
   const [ativa, setAtiva] = useState(tarefa?.ativa ?? true);
   const [erro, setErro] = useState("");
 
+  // Recorrência
+  const [recorrente, setRecorrente] = useState(false);
+  const [tipoRec, setTipoRec] = useState<Recorrencia>("mensal");
+  const [qtdRec, setQtdRec] = useState(3);
+
   function salvar() {
     if (!projetoId) { setErro("Selecione o projeto."); return; }
     if (!nome.trim()) { setErro("Informe o nome da tarefa."); return; }
-    onSave({
+
+    const base: Tarefa = {
       id: tarefa?.id ?? uuid(),
       projetoId,
       nome: nome.trim(),
@@ -302,7 +393,26 @@ function TarefaFormModal({
       dtFim: dtFim || null,
       ativa,
       semana: tarefa?.semana ?? null,
-    });
+    };
+
+    if (!tarefa && recorrente && dtIni && qtdRec > 1) {
+      const tarefas: Tarefa[] = [];
+      let dataAtual = dtIni;
+      for (let i = 0; i < qtdRec; i++) {
+        const dtF = dtFim ? dtFim : dataAtual;
+        tarefas.push({
+          ...base,
+          id: uuid(),
+          nome: `${nome.trim()} (${i + 1}/${qtdRec})`,
+          dtIni: dataAtual,
+          dtFim: dtF,
+        });
+        dataAtual = proximaData(dataAtual, tipoRec);
+      }
+      onSave(tarefas);
+    } else {
+      onSave([base]);
+    }
   }
 
   return (
@@ -328,7 +438,7 @@ function TarefaFormModal({
         <div>
           <label>Projeto</label>
           <select value={projetoId} onChange={(e) => setProjetoId(e.target.value)}>
-            {snap.projetos.map((p) => (
+            {projetosDisp.map((p) => (
               <option key={p.id} value={p.id}>{p.id} — {p.nome || p.cliente}</option>
             ))}
           </select>
@@ -337,9 +447,7 @@ function TarefaFormModal({
           <label>Responsável</label>
           <select value={respId} onChange={(e) => setRespId(e.target.value)}>
             <option value="">—</option>
-            {snap.equipe.map((c) => (
-              <option key={c.id} value={c.id}>{c.nome}</option>
-            ))}
+            {snap.equipe.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
           </select>
         </div>
       </div>
@@ -347,9 +455,7 @@ function TarefaFormModal({
         <div>
           <label>Status</label>
           <select value={status} onChange={(e) => setStatus(e.target.value as TarefaStatus)}>
-            {STATUS_TAREFA.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
+            {STATUS_TAREFA.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
@@ -371,6 +477,39 @@ function TarefaFormModal({
         <input type="checkbox" checked={ativa} onChange={(e) => setAtiva(e.target.checked)} style={{ width: "auto" }} />
         Ativa
       </label>
+
+      {/* Recorrência — só para criação */}
+      {!tarefa && (
+        <>
+          <div className="section-label" style={{ marginTop: 12 }}>Recorrência</div>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+            <input type="checkbox" checked={recorrente} onChange={(e) => setRecorrente(e.target.checked)} style={{ width: "auto" }} />
+            Criar tarefa recorrente
+          </label>
+          {recorrente && (
+            <div className="form-grid" style={{ marginTop: 8 }}>
+              <div>
+                <label>Tipo de recorrência</label>
+                <select value={tipoRec} onChange={(e) => setTipoRec(e.target.value as Recorrencia)}>
+                  <option value="diaria">Diária</option>
+                  <option value="semanal">Semanal</option>
+                  <option value="mensal">Mensal</option>
+                  <option value="anual">Anual</option>
+                </select>
+              </div>
+              <div>
+                <label>Quantidade de ocorrências</label>
+                <input type="number" min="2" max="60" value={qtdRec} onChange={(e) => setQtdRec(Math.max(2, Number(e.target.value)))} />
+              </div>
+            </div>
+          )}
+          {recorrente && (
+            <div className="hint">
+              Serão criadas {qtdRec} tarefas com nomes "{nome || "Tarefa"} (1/{qtdRec})", "(2/{qtdRec})"…, espaçadas {tipoRec === "diaria" ? "1 dia" : tipoRec === "semanal" ? "7 dias" : tipoRec === "mensal" ? "1 mês" : "1 ano"} cada.
+            </div>
+          )}
+        </>
+      )}
     </Modal>
   );
 }

@@ -26,17 +26,45 @@ export function Pagamentos() {
 function PagamentosAdmin() {
   const { snap, rateOf, toast, save, remove } = useData();
   const [pagar, setPagar] = useState<Consultor | null>(null);
+  const [fMes, setFMes] = useState("");
+  const [expandidosMes, setExpandidosMes] = useState<Set<string>>(new Set());
+
+  function toggleMes(key: string) {
+    setExpandidosMes((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   const nomeProjeto = useMemo(() => {
     const m = new Map(snap.projetos.map((p) => [p.id, p.nome || p.cliente]));
     return (id: string) => m.get(id) ?? id;
   }, [snap.projetos]);
 
+  // Meses disponíveis para filtro
+  const mesesDisp = useMemo(() => {
+    const comps = new Set<string>();
+    for (const l of snap.lancamentos) comps.add(l.competencia);
+    for (const p of snap.pagamentos) comps.add(p.competencia);
+    return [...comps].filter(Boolean).sort();
+  }, [snap.lancamentos, snap.pagamentos]);
+
+  const nomeTarefa = useMemo(() => {
+    const m = new Map(snap.tarefas.map((t) => [t.id, t.nome]));
+    return (id: string | null) => (id ? m.get(id) ?? "Sem tarefa" : "Sem tarefa");
+  }, [snap.tarefas]);
+
   const porConsultor = snap.equipe
     .map((c) => ({
       c,
       saldo: saldoConsultor(c.id, snap.lancamentos, snap.pagamentos, rateOf),
       meses: resumoPorCompetencia(c.id, snap.lancamentos, snap.pagamentos, rateOf),
+    }))
+    .filter((x) => x.meses.length > 0)
+    .map((x) => ({
+      ...x,
+      meses: fMes ? x.meses.filter((m) => m.competencia === fMes) : x.meses,
     }))
     .filter((x) => x.meses.length > 0);
 
@@ -49,7 +77,17 @@ function PagamentosAdmin() {
   return (
     <>
       <div className="page-title">Pagamento de Horas</div>
-      <div className="page-sub">Pago e a pagar por consultor e por mês</div>
+      <div className="page-sub">Pago e a pagar por consultor e por mês — clique no mês para ver as tarefas</div>
+
+      <div className="filter-bar">
+        <div>
+          <label>Filtrar mês</label>
+          <select value={fMes} onChange={(e) => setFMes(e.target.value)}>
+            <option value="">Todos os meses</option>
+            {mesesDisp.map((m) => <option key={m} value={m}>{labelCompetencia(m)}</option>)}
+          </select>
+        </div>
+      </div>
 
       <div className="kpi-row">
         <Kpi label="Total a pagar" value={fmtBRL(totalAPagarCents)} tone="amber" />
@@ -94,9 +132,18 @@ function PagamentosAdmin() {
                       : m.horasPagas > 0.001
                         ? <span className="badge b-orange">Parcial</span>
                         : <span className="badge b-amber">A pagar</span>;
-                  return (
-                    <tr key={m.competencia}>
-                      <td className="l td-name">{labelCompetencia(m.competencia)}</td>
+                  const mesKey = `${c.id}||${m.competencia}`;
+                  const isExp = expandidosMes.has(mesKey);
+                  // tarefas realizadas por este consultor neste mês
+                  const lancsDoMes = snap.lancamentos.filter(
+                    (l) => l.consultorId === c.id && l.competencia === m.competencia,
+                  );
+                  return [
+                    <tr key={m.competencia} style={{ cursor: "pointer" }} onClick={() => toggleMes(mesKey)}>
+                      <td className="l td-name" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 9, color: "var(--tx3)" }}>{isExp ? "▲" : "▼"}</span>
+                        {labelCompetencia(m.competencia)}
+                      </td>
                       <td className="td-val">{fmtH(m.horasTrab)}</td>
                       <td className="td-val" style={{ color: "var(--green)" }}>{fmtH(m.horasPagas)}</td>
                       <td className="td-val" style={{ color: m.horasSaldo > 0.001 ? "var(--amber)" : "var(--tx3)", fontWeight: 700 }}>
@@ -105,8 +152,43 @@ function PagamentosAdmin() {
                       <td className="td-val" style={{ color: "var(--green)" }}>{fmtBRL(m.valorPagoCents)}</td>
                       <td className="td-val" style={{ color: m.horasSaldo > 0.001 ? "var(--amber)" : "var(--tx3)" }}>{fmtBRL(m.valorSaldoCents)}</td>
                       <td>{situ}</td>
-                    </tr>
-                  );
+                    </tr>,
+                    isExp && (
+                      <tr key={`${m.competencia}-tasks`} style={{ background: "rgba(0,0,0,0.12)" }}>
+                        <td colSpan={7} style={{ padding: "4px 16px 10px" }}>
+                          <table style={{ width: "100%", fontSize: 11 }}>
+                            <thead>
+                              <tr>
+                                <th className="l" style={{ color: "var(--tx3)", fontWeight: 600 }}>Tarefa</th>
+                                <th className="l" style={{ color: "var(--tx3)", fontWeight: 600 }}>Projeto</th>
+                                <th style={{ color: "var(--tx3)", fontWeight: 600 }}>Data</th>
+                                <th style={{ color: "var(--tx3)", fontWeight: 600 }}>Horas</th>
+                                <th style={{ color: "var(--tx3)", fontWeight: 600 }}>Situação</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {lancsDoMes.map((l) => (
+                                <tr key={l.id}>
+                                  <td className="l">{nomeTarefa(l.tarefaId)}</td>
+                                  <td className="l">{nomeProjeto(l.projetoId)}</td>
+                                  <td>{fmtDate(l.data)}</td>
+                                  <td className="td-val">{fmtH(l.horas)}</td>
+                                  <td>
+                                    {m.horasSaldo <= 0.001
+                                      ? <span className="badge b-green">Pago</span>
+                                      : <span className="badge b-amber">A pagar</span>}
+                                  </td>
+                                </tr>
+                              ))}
+                              {lancsDoMes.length === 0 && (
+                                <tr><td colSpan={5} className="muted">Sem lançamentos neste mês.</td></tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    ),
+                  ];
                 })}
               </tbody>
             </table>

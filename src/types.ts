@@ -60,6 +60,10 @@ export interface Projeto {
   pctAdm: number;
   pctCom: number;
   pctLucro: number;
+  /** % impostos sobre a receita (opcional, default 0). */
+  pctImpostos?: number;
+  /** % marketing sobre a receita (opcional, default 0). */
+  pctMarketing?: number;
   status: ProjetoStatus;
   dtIni: string | null; // ISO date
   dtFim: string | null; // ISO date

@@ -335,6 +335,55 @@ export function custoHorasMesCents(
     .reduce((s, l) => s + Math.round(l.horas * rateOf(l.consultorId)), 0);
 }
 
+/**
+ * Custo proporcional (impostos, comissão, adm, marketing…) de um projeto numa competência.
+ * O percentual é aplicado sobre a receita reconhecida no mês.
+ */
+export function custoPctMesCents(
+  pct: number,
+  projetoId: string,
+  comp: string,
+  parcelas: Parcela[],
+): number {
+  if (!pct) return 0;
+  return Math.round(receitaMesCents(projetoId, comp, parcelas) * pct);
+}
+
+/** Linha DRE completa de uma lista de projetos numa competência. */
+export interface LinhaDRE {
+  comp: string;
+  receita: number;
+  impostos: number;
+  comissao: number;
+  receitaLiq: number;
+  custoHoras: number;
+  custoBase: number;
+  adm: number;
+  marketing: number;
+  resultado: number;
+}
+
+export function linhaDRE(
+  comp: string,
+  projetos: Projeto[],
+  parcelas: Parcela[],
+  lancamentos: Lancamento[],
+  custos: Custo[],
+  todosProjetos: Projeto[],
+  rateOf: (consultorId: string) => number,
+): LinhaDRE {
+  const receita = projetos.reduce((s, p) => s + receitaMesCents(p.id, comp, parcelas), 0);
+  const impostos = projetos.reduce((s, p) => s + custoPctMesCents(p.pctImpostos ?? 0, p.id, comp, parcelas), 0);
+  const comissao = projetos.reduce((s, p) => s + custoPctMesCents(p.pctCom ?? 0, p.id, comp, parcelas), 0);
+  const adm = projetos.reduce((s, p) => s + custoPctMesCents(p.pctAdm ?? 0, p.id, comp, parcelas), 0);
+  const marketing = projetos.reduce((s, p) => s + custoPctMesCents(p.pctMarketing ?? 0, p.id, comp, parcelas), 0);
+  const receitaLiq = receita - impostos - comissao;
+  const custoHoras = projetos.reduce((s, p) => s + custoHorasMesCents(p.id, comp, lancamentos, rateOf), 0);
+  const custoBase = projetos.reduce((s, p) => s + custoBaseMesCents(p.id, comp, custos, todosProjetos), 0);
+  const resultado = receitaLiq - custoHoras - custoBase - adm - marketing;
+  return { comp, receita, impostos, comissao, receitaLiq, custoHoras, custoBase, adm, marketing, resultado };
+}
+
 // ── totais de receita (para o Painel) ─────────────────────────
 export function totalContratadoCents(projetos: Projeto[]): number {
   return sum(

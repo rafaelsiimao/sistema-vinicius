@@ -3,6 +3,7 @@ import { useData } from "@/store/useData";
 import { Modal } from "@/ui/Modal";
 import { Kpi } from "@/ui/primitives";
 import {
+  alvosRateio,
   competenciasDoSistema,
   custoBaseMesCents,
   custoVigenteNoMes,
@@ -34,6 +35,15 @@ export function Custos() {
   const [editando, setEditando] = useState<Custo | null>(null);
   const [criando, setCriando] = useState(false);
   const [novaCategoria, setNovaCategoria] = useState(false);
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+
+  function toggleExpand(id: string) {
+    setExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   const meses = useMemo(() => competenciasDoSistema(snap, today), [snap, today]);
   const nomeProjeto = (id: string | null) => (id ? snap.projetos.find((p) => p.id === id)?.nome ?? id : "—");
@@ -129,11 +139,12 @@ export function Custos() {
       </div>
 
       <div className="tbl-wrap">
-        <div className="tbl-title">Todos os custos</div>
+        <div className="tbl-title">Todos os custos — total + detalhe de rateio</div>
         <div className="scroll-x">
           <table>
             <thead>
               <tr>
+                <th style={{ width: 28 }}></th>
                 <th className="l">Categoria</th>
                 <th className="l">Descrição</th>
                 <th>Valor</th>
@@ -144,29 +155,71 @@ export function Custos() {
               </tr>
             </thead>
             <tbody>
-              {custosFiltrados.map((c) => (
-                <tr key={c.id} className={custoVigenteNoMes(c, comp) ? "" : "row-inactive"}>
-                  <td className="l td-name">{c.categoria}</td>
-                  <td className="l" style={{ fontSize: 11 }}>{c.descricao}</td>
-                  <td className="td-val">{fmtBRL(c.valorCents)}</td>
-                  <td style={{ fontSize: 10 }} className="muted">
-                    {labelCompetencia(c.competencia)}
-                    {c.frequencia === "recorrente" ? ` → ${c.competenciaFim ? labelCompetencia(c.competenciaFim) : "…"}` : ""}
-                  </td>
-                  <td>{c.frequencia === "recorrente" ? <span className="badge b-blue">Recorrente</span> : <span className="badge b-gray">Única</span>}</td>
-                  <td className="l" style={{ fontSize: 11 }}>
-                    {RATEIO_LABEL[c.rateio]}
-                    {c.rateio === "projeto" && <span className="muted"> · {nomeProjeto(c.projetoId)}</span>}
-                  </td>
-                  <td>
-                    <div className="row-actions">
-                      <button className="btn btn-sm" onClick={() => setEditando(c)}>editar</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {custosFiltrados.map((c) => {
+                const vigenteNeste = custoVigenteNoMes(c, comp);
+                const alvos = vigenteNeste ? alvosRateio(c, comp, snap.projetos) : [];
+                const isExp = expandidos.has(c.id);
+                return [
+                  <tr key={c.id} className={vigenteNeste ? "" : "row-inactive"}>
+                    <td style={{ textAlign: "center" }}>
+                      {alvos.length > 0 && (
+                        <button
+                          className="btn btn-sm"
+                          style={{ padding: "0 6px", fontSize: 10 }}
+                          onClick={() => toggleExpand(c.id)}
+                          title={isExp ? "Ocultar rateio" : "Ver rateio detalhado"}
+                        >
+                          {isExp ? "▲" : "▼"}
+                        </button>
+                      )}
+                    </td>
+                    <td className="l td-name">{c.categoria}</td>
+                    <td className="l" style={{ fontSize: 11 }}>{c.descricao}</td>
+                    <td className="td-val">{fmtBRL(c.valorCents)}</td>
+                    <td style={{ fontSize: 10 }} className="muted">
+                      {labelCompetencia(c.competencia)}
+                      {c.frequencia === "recorrente" ? ` → ${c.competenciaFim ? labelCompetencia(c.competenciaFim) : "…"}` : ""}
+                    </td>
+                    <td>{c.frequencia === "recorrente" ? <span className="badge b-blue">Recorrente</span> : <span className="badge b-gray">Única</span>}</td>
+                    <td className="l" style={{ fontSize: 11 }}>
+                      {RATEIO_LABEL[c.rateio]}
+                      {c.rateio === "projeto" && <span className="muted"> · {nomeProjeto(c.projetoId)}</span>}
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        <button className="btn btn-sm" onClick={() => setEditando(c)}>editar</button>
+                      </div>
+                    </td>
+                  </tr>,
+                  isExp && alvos.length > 0 && (
+                    <tr key={`${c.id}-detail`} style={{ background: "rgba(0,0,0,0.15)" }}>
+                      <td></td>
+                      <td colSpan={7} style={{ padding: "4px 12px 8px" }}>
+                        <table style={{ width: "100%", fontSize: 11 }}>
+                          <thead>
+                            <tr>
+                              <th className="l" style={{ fontWeight: 600, color: "var(--tx3)" }}>Projeto</th>
+                              <th style={{ color: "var(--tx3)", fontWeight: 600 }}>% Rateio</th>
+                              <th style={{ color: "var(--tx3)", fontWeight: 600 }}>Valor alocado</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {alvos.map((a) => (
+                              <tr key={a.projetoId}>
+                                <td className="l">{nomeProjeto(a.projetoId)}</td>
+                                <td className="td-val">{(a.peso * 100).toFixed(1)}%</td>
+                                <td className="td-val">{fmtBRL(Math.round(c.valorCents * a.peso))}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  ),
+                ];
+              })}
               {custosFiltrados.length === 0 && (
-                <tr><td colSpan={7} className="empty-state">Nenhum custo cadastrado.</td></tr>
+                <tr><td colSpan={8} className="empty-state">Nenhum custo cadastrado.</td></tr>
               )}
             </tbody>
           </table>
