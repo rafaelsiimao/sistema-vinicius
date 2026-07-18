@@ -9,7 +9,7 @@ import {
   type LinhaDRE,
 } from "@/lib/calc";
 import { fmtBRL } from "@/lib/money";
-import { labelCompetencia, todayISO } from "@/lib/dates";
+import { competenciaOf, labelCompetencia, todayISO } from "@/lib/dates";
 import { Kpi } from "@/ui/primitives";
 
 const fmtPct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -43,14 +43,16 @@ const DRE_LINHAS: DRELinhaConfig[] = [
 ];
 
 function ValCell({
-  v, bold, neg, muted, isReceita, red, receitaRecebida,
+  v, bold, neg, muted, isReceita, red, amber, receitaRecebida,
 }: {
   v: number; bold?: boolean; neg?: boolean; muted?: boolean;
-  isReceita?: boolean; red?: boolean; receitaRecebida?: number;
+  isReceita?: boolean; red?: boolean; amber?: boolean; receitaRecebida?: number;
 }) {
   let color: string | undefined;
   if (red) {
     color = "var(--red)";
+  } else if (amber) {
+    color = "var(--amber)";
   } else if (isReceita && v > 0) {
     color = receitaRecebida !== undefined && receitaRecebida >= v
       ? "var(--green)" : "var(--amber)";
@@ -66,9 +68,9 @@ function ValCell({
   );
 }
 
-function SubValCell({ v }: { v: number }) {
+function SubValCell({ v, amber }: { v: number; amber?: boolean }) {
   return (
-    <td className="td-val" style={{ fontSize: 11, color: "var(--tx3)", whiteSpace: "nowrap" }}>
+    <td className="td-val" style={{ fontSize: 11, color: amber ? "var(--amber)" : "var(--tx3)", whiteSpace: "nowrap" }}>
       {v === 0 ? <span style={{ opacity: 0.3 }}>—</span> : fmtBRL(v)}
     </td>
   );
@@ -87,6 +89,8 @@ export function Evolucao() {
       return next;
     });
   }
+
+  const todayComp = useMemo(() => competenciaOf(today), [today]);
 
   const meses = useMemo(() => competenciasDoSistema(snap, today), [snap, today]);
   const projetosAtivos = snap.projetos.filter((p) => p.status !== "Cancelado");
@@ -195,6 +199,65 @@ export function Evolucao() {
 
   const horasNomes = useMemo(() => [...horasTotal.keys()], [horasTotal]);
 
+  // ── previsão custo horas para meses futuros (baseada em hPrev das tarefas) ───
+  const previsaoHorasDetail = useMemo(() => {
+    const map = new Map<string, Array<{ nome: string; horas: number; total: number }>>();
+    for (const l of comMov) {
+      if (l.comp <= todayComp) continue;
+      const items = snap.equipe.map((c) => {
+        const horas = snap.tarefas
+          .filter((t) =>
+            t.respId === c.id &&
+            projetoIdSet.has(t.projetoId) &&
+            t.dtFim !== null &&
+            competenciaOf(t.dtFim) === l.comp &&
+            t.status !== "Concluída" &&
+            t.ativa !== false,
+          )
+          .reduce((s, t) => s + (t.hPrev || 0), 0);
+        const total = Math.round(horas * rateOf(c.id));
+        return { nome: c.nome, horas, total };
+      }).filter((c) => c.total > 0);
+      if (items.length > 0) map.set(l.comp, items);
+    }
+    return map;
+  }, [comMov, snap.equipe, snap.tarefas, projetoIdSet, rateOf, todayComp]);
+
+  const previsaoHorasTotal = useMemo(() => {
+    const m = new Map<string, { horas: number; total: number }>();
+    for (const items of previsaoHorasDetail.values()) {
+      for (const item of items) {
+        const prev = m.get(item.nome) || { horas: 0, total: 0 };
+        m.set(item.nome, { horas: prev.horas + item.horas, total: prev.total + item.total });
+      }
+    }
+    return m;
+  }, [previsaoHorasDetail]);
+
+  const previsaoHorasNomes = useMemo(() => [...previsaoHorasTotal.keys()], [previsaoHorasTotal]);
+
+  const allHorasNomes = useMemo(() => {
+    const seen = new Set(horasNomes);
+    return [...horasNomes, ...previsaoHorasNomes.filter((n) => !seen.has(n))];
+  }, [horasNomes, previsaoHorasNomes]);
+
+  // custo previsão por competência (soma dos consultores)
+  const previsaoCustoHoras = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const [comp, items] of previsaoHorasDetail) {
+      m.set(comp, items.reduce((s, i) => s + i.total, 0));
+    }
+    return m;
+  }, [previsaoHorasDetail]);
+
+  // total acumulado incluindo previsão em meses futuros sem lançamentos
+  const totalCustoHorasComPrevisao = useMemo(() => {
+    const prevExtra = comMov
+      .filter((l) => l.comp > todayComp && l.custoHoras === 0)
+      .reduce((s, l) => s + (previsaoCustoHoras.get(l.comp) ?? 0), 0);
+    return total.custoHoras + prevExtra;
+  }, [total.custoHoras, comMov, todayComp, previsaoCustoHoras]);
+
   const nCols = comMov.length + 2;
 
   const stickyLabel = (bold: boolean, indent?: boolean, muted?: boolean, extraStyle?: React.CSSProperties) => ({
@@ -278,27 +341,52 @@ export function Evolucao() {
                         )}
                         {cfg.label}
                       </td>
-                      {comMov.map((l) => (
+                      {comMov.map((l) => {
+                        if (cfg.key === "custoHoras") {
+                          const isFuture = l.comp > todayComp;
+                          const actual = l.custoHoras;
+                          const prev = previsaoCustoHoras.get(l.comp) ?? 0;
+                          const v = isFuture ? (actual || prev) : actual;
+                          return (
+                            <ValCell
+                              key={l.comp}
+                              v={v}
+                              bold={cfg.bold}
+                              muted={!isFuture && cfg.muted}
+                              amber={isFuture && v > 0}
+                            />
+                          );
+                        }
+                        return (
+                          <ValCell
+                            key={l.comp}
+                            v={getValue(l, cfg.key as keyof LinhaDRE)}
+                            bold={cfg.bold}
+                            neg={cfg.neg}
+                            muted={cfg.muted}
+                            red={cfg.red}
+                            isReceita={cfg.isReceita}
+                            receitaRecebida={cfg.isReceita ? l.receitaRecebida : undefined}
+                          />
+                        );
+                      })}
+                      {cfg.key === "custoHoras" ? (
                         <ValCell
-                          key={l.comp}
-                          v={getValue(l, cfg.key as keyof LinhaDRE)}
+                          v={totalCustoHorasComPrevisao}
+                          bold={cfg.bold}
+                          muted={cfg.muted}
+                        />
+                      ) : (
+                        <ValCell
+                          v={getValue(total, cfg.key as keyof LinhaDRE)}
                           bold={cfg.bold}
                           neg={cfg.neg}
                           muted={cfg.muted}
                           red={cfg.red}
                           isReceita={cfg.isReceita}
-                          receitaRecebida={cfg.isReceita ? l.receitaRecebida : undefined}
+                          receitaRecebida={cfg.isReceita ? total.receitaRecebida : undefined}
                         />
-                      ))}
-                      <ValCell
-                        v={getValue(total, cfg.key as keyof LinhaDRE)}
-                        bold={cfg.bold}
-                        neg={cfg.neg}
-                        muted={cfg.muted}
-                        red={cfg.red}
-                        isReceita={cfg.isReceita}
-                        receitaRecebida={cfg.isReceita ? total.receitaRecebida : undefined}
-                      />
+                      )}
                     </tr>
 
                     {/* Sub-linhas de detalhe — Custos Fixos Rateados */}
@@ -316,19 +404,22 @@ export function Evolucao() {
                     ))}
 
                     {/* Sub-linhas de detalhe — Custo de Horas por consultor */}
-                    {canExpand && isExpanded && cfg.key === "custoHoras" && horasNomes.map((nome) => (
+                    {canExpand && isExpanded && cfg.key === "custoHoras" && allHorasNomes.map((nome) => (
                       <tr key={`custoHoras-${nome}`} style={{ background: "rgba(255,255,255,0.01)" }}>
                         <td className="l" style={{ ...stickyLabel(false, true, true), paddingLeft: 40, fontSize: 11, background: "var(--card)" }}>
                           {nome}
                           <span style={{ marginLeft: 6, fontSize: 10, opacity: 0.6 }}>
-                            ({fmtH(horasTotal.get(nome)?.horas ?? 0)})
+                            ({fmtH((horasTotal.get(nome)?.horas ?? 0) + (previsaoHorasTotal.get(nome)?.horas ?? 0))})
                           </span>
                         </td>
                         {comMov.map((l) => {
-                          const item = horasDetail.get(l.comp)?.find((i) => i.nome === nome);
-                          return <SubValCell key={l.comp} v={item?.total ?? 0} />;
+                          const isFuture = l.comp > todayComp;
+                          const actual = horasDetail.get(l.comp)?.find((i) => i.nome === nome);
+                          const prev = previsaoHorasDetail.get(l.comp)?.find((i) => i.nome === nome);
+                          const v = isFuture ? (actual?.total || prev?.total || 0) : (actual?.total ?? 0);
+                          return <SubValCell key={l.comp} v={v} amber={isFuture && v > 0} />;
                         })}
-                        <SubValCell v={horasTotal.get(nome)?.total ?? 0} />
+                        <SubValCell v={(horasTotal.get(nome)?.total ?? 0) + (previsaoHorasTotal.get(nome)?.total ?? 0)} />
                       </tr>
                     ))}
                   </>
@@ -363,6 +454,8 @@ export function Evolucao() {
         <div style={{ padding: "6px 16px 10px", fontSize: 11, color: "var(--tx3)" }}>
           Receita Bruta: <span style={{ color: "var(--green)" }}>■ verde = recebida</span> &nbsp;
           <span style={{ color: "var(--amber)" }}>■ amarelo = a receber</span>
+          &nbsp;&nbsp;·&nbsp;&nbsp;
+          Custo de Horas: <span style={{ color: "var(--amber)" }}>■ amarelo = previsão (meses futuros)</span>
         </div>
       </div>
     </>
