@@ -10,9 +10,9 @@
 window.__JOBZ_CONFIG__ = {
   // "supabase" = nuvem / uso compartilhado (com login).
   // "local"    = teste no próprio navegador (sem login). [padrão de fábrica]
-  dataSource: "local",
+  dataSource: "supabase",
 
   // Valores do projeto Supabase:  Supabase → Project Settings → API
-  supabaseUrl: "COLE_AQUI_A_PROJECT_URL",         // ex.: https://xxxx.supabase.co
-  supabaseAnonKey: "COLE_AQUI_A_ANON_PUBLIC_KEY"  // a chave "anon public" (pode ser pública)
+  supabaseUrl: "https://foujodkyckjryjickhbq.supabase.co",
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvdWpvZGt5Y2tqcnlqaWNraGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyNjkwNTMsImV4cCI6MjA5OTg0NTA1M30._plVJRRuQQUVg2nOmH7VEXFcFiRCfqtzjKqZDeJgqqw"
 };
