@@ -55,13 +55,12 @@ export function Tarefas() {
   const [fProjetos, setFProjetos] = useState<string[]>([]);
   const [fMes, setFMes] = useState<string[]>([]);
   const [fStatus, setFStatus] = useState<string[]>([]);
-  const [colNome, setColNome] = useState("");
-  const [colResp, setColResp] = useState("");
   const [lancar, setLancar] = useState<Tarefa | null>(null);
   const [gerenciarLanc, setGerenciarLanc] = useState<Tarefa | null>(null);
   const [editar, setEditar] = useState<Tarefa | null>(null);
   const [criar, setCriar] = useState(false);
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const [busca, setBusca] = useState("");
 
   const projetosOpts = projetosAtivos.map((p) => ({ value: p.id, label: `${p.id} — ${p.nome || p.cliente}` }));
   const statusOpts = STATUS_TAREFA.map((s) => ({ value: s, label: s }));
@@ -96,22 +95,29 @@ export function Tarefas() {
   );
 
   const tarefas = useMemo(() => {
-    const nomeLow = colNome.toLowerCase();
-    const respLow = colResp.toLowerCase();
+    const q = busca.toLowerCase().trim();
     return snap.tarefas
       .filter((t) => !projetosCancelados.has(t.projetoId))
       .filter((t) => (isAdmin ? true : t.respId === currentUser?.id || podeEditarTarefa(t, currentUser, isAdmin, snap.projetos)))
       .filter((t) => (fProjetos.length ? fProjetos.includes(t.projetoId) : true))
       .filter((t) => (fMes.length ? (t.dtIni ? fMes.includes(t.dtIni.slice(0, 7)) : false) : true))
       .filter((t) => (fStatus.length ? fStatus.includes(t.status) : true))
-      .filter((t) => (nomeLow ? t.nome.toLowerCase().includes(nomeLow) : true))
       .filter((t) => {
-        if (!respLow) return true;
-        const n = snap.equipe.find((c) => c.id === t.respId)?.nome ?? "";
-        return n.toLowerCase().includes(respLow);
+        if (!q) return true;
+        const respNome = snap.equipe.find((c) => c.id === t.respId)?.nome ?? "";
+        const projNome = snap.projetos.find((p) => p.id === t.projetoId)?.nome ?? "";
+        return (
+          t.nome.toLowerCase().includes(q) ||
+          t.projetoId.toLowerCase().includes(q) ||
+          projNome.toLowerCase().includes(q) ||
+          respNome.toLowerCase().includes(q) ||
+          t.status.toLowerCase().includes(q) ||
+          (t.dtIni ?? "").includes(q) ||
+          (t.dtFim ?? "").includes(q)
+        );
       })
       .sort((a, b) => (a.dtIni ?? "").localeCompare(b.dtIni ?? ""));
-  }, [snap.tarefas, projetosCancelados, isAdmin, currentUser, fProjetos, fMes, fStatus, colNome, colResp, snap.projetos, snap.equipe]);
+  }, [snap.tarefas, projetosCancelados, isAdmin, currentUser, fProjetos, fMes, fStatus, busca, snap.projetos, snap.equipe]);
 
   const todasSelecionadas = tarefas.length > 0 && tarefas.every((t) => selecionadas.has(t.id));
 
@@ -162,20 +168,36 @@ export function Tarefas() {
         {isAdmin ? "Todas as tarefas — lançamento de horas e andamento" : "Suas tarefas e as dos projetos que você gerencia"}
       </div>
 
-      <div className="filter-bar">
+      <div className="filter-bar" style={{ flexWrap: "wrap", gap: 10 }}>
+        <div style={{ flex: "1 1 220px" }}>
+          <label style={{ display: "block", marginBottom: 4, fontSize: 11, color: "var(--tx3)", fontWeight: 600, textTransform: "uppercase" }}>Pesquisar</label>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Digite qualquer coisa — nome, projeto, responsável, status…"
+            style={{ width: "100%", fontSize: 13, padding: "6px 10px", background: "var(--card2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--tx)" }}
+          />
+        </div>
         <MultiSelect label="Projeto" options={projetosOpts} selected={fProjetos} onChange={setFProjetos} placeholder="Todos" />
         <MultiSelect label="Mês" options={mesesOpts} selected={fMes} onChange={setFMes} placeholder="Todos" />
         <MultiSelect label="Status" options={statusOpts} selected={fStatus} onChange={setFStatus} placeholder="Todos" />
-        {selecionadas.size > 0 && (
-          <button className="btn btn-danger" onClick={() => void excluirSelecionadas()}>
-            Excluir selecionadas ({selecionadas.size})
-          </button>
+        {(busca || fProjetos.length || fMes.length || fStatus.length) && (
+          <div style={{ display: "flex", alignItems: "flex-end" }}>
+            <button className="btn btn-sm" onClick={() => { setBusca(""); setFProjetos([]); setFMes([]); setFStatus([]); }}>
+              ✕ Limpar filtros
+            </button>
+          </div>
         )}
-        {podeVerBotaoNovo && (
-          <button className="btn btn-primary" onClick={() => setCriar(true)}>
-            + Nova tarefa
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginLeft: "auto" }}>
+          {selecionadas.size > 0 && (
+            <button className="btn btn-danger" onClick={() => void excluirSelecionadas()}>
+              Excluir selecionadas ({selecionadas.size})
+            </button>
+          )}
+          {podeVerBotaoNovo && (
+            <button className="btn btn-primary" onClick={() => setCriar(true)}>+ Nova tarefa</button>
+          )}
+        </div>
       </div>
 
       <div className="tbl-wrap">
@@ -200,31 +222,6 @@ export function Tarefas() {
                 <th>H. Prev</th>
                 <th>H. Lanç.</th>
                 <th>Ações</th>
-              </tr>
-              <tr style={{ background: "var(--bg2)" }}>
-                <th></th>
-                <th className="l" style={{ padding: "4px 8px" }}>
-                  <input
-                    value={colNome}
-                    onChange={(e) => setColNome(e.target.value)}
-                    placeholder="pesquisar…"
-                    style={{ width: "100%", fontSize: 11, padding: "3px 6px", background: "var(--card)", border: "1px solid var(--border)", color: "var(--tx)" }}
-                  />
-                </th>
-                <th></th>
-                <th className="l" style={{ padding: "4px 8px" }}>
-                  <input
-                    value={colResp}
-                    onChange={(e) => setColResp(e.target.value)}
-                    placeholder="pesquisar…"
-                    style={{ width: "100%", fontSize: 11, padding: "3px 6px", background: "var(--card)", border: "1px solid var(--border)", color: "var(--tx)" }}
-                  />
-                </th>
-                <th></th>
-                <th></th>
-                <th></th>
-                <th></th>
-                <th></th>
               </tr>
             </thead>
             <tbody>

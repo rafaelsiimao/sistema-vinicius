@@ -16,15 +16,22 @@ interface MultiSelectProps {
 
 export function MultiSelect({ label, options, selected, onChange, placeholder = "Todos" }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
+  const [busca, setBusca] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setBusca(""); }
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 30);
+    else setBusca("");
+  }, [open]);
 
   const all = selected.length === 0;
   const displayText = all
@@ -86,56 +93,42 @@ export function MultiSelect({ label, options, selected, onChange, placeholder = 
             background: "var(--card)",
             border: "1px solid var(--border)",
             borderRadius: 6,
-            minWidth: "100%",
-            maxHeight: 260,
-            overflowY: "auto",
+            minWidth: "max(100%, 200px)",
+            maxHeight: 300,
+            display: "flex",
+            flexDirection: "column",
             boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
           }}
         >
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 12px",
-              cursor: "pointer",
-              borderBottom: "1px solid var(--border)",
-              fontWeight: 700,
-              fontSize: 12,
-              color: "var(--tx)",
-              background: "var(--card2)",
-            }}
-          >
-            <input type="checkbox" checked={all} onChange={toggleAll} style={{ width: "auto", margin: 0 }} />
-            Todos
-          </label>
-          {options.map((o) => (
-            <label
-              key={o.value}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "7px 12px",
-                cursor: "pointer",
-                fontSize: 12,
-                color: "var(--tx2)",
-                borderBottom: "1px solid var(--border)",
-                background: "var(--card)",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(o.value)}
-                onChange={() => toggleOption(o.value)}
-                style={{ width: "auto", margin: 0 }}
-              />
-              {o.label}
-            </label>
-          ))}
-          {options.length === 0 && (
-            <div style={{ padding: "8px 12px", color: "var(--tx3)", fontSize: 12 }}>Sem opções.</div>
-          )}
+          <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)", background: "var(--card2)" }}>
+            <input
+              ref={inputRef}
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Pesquisar…"
+              style={{ width: "100%", fontSize: 12, padding: "4px 8px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--tx)" }}
+            />
+          </div>
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {!busca && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid var(--border)", fontWeight: 700, fontSize: 12, color: "var(--tx)", background: "var(--card2)" }}>
+                <input type="checkbox" checked={all} onChange={toggleAll} style={{ width: "auto", margin: 0 }} />
+                Todos
+              </label>
+            )}
+            {options.filter((o) => !busca || o.label.toLowerCase().includes(busca.toLowerCase())).map((o) => (
+              <label
+                key={o.value}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12, color: "var(--tx2)", borderBottom: "1px solid var(--border)", background: "var(--card)" }}
+              >
+                <input type="checkbox" checked={selected.includes(o.value)} onChange={() => toggleOption(o.value)} style={{ width: "auto", margin: 0 }} />
+                {o.label}
+              </label>
+            ))}
+            {options.filter((o) => !busca || o.label.toLowerCase().includes(busca.toLowerCase())).length === 0 && (
+              <div style={{ padding: "8px 12px", color: "var(--tx3)", fontSize: 12 }}>Nenhum resultado.</div>
+            )}
+          </div>
         </div>
       )}
     </div>

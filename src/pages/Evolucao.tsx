@@ -209,8 +209,8 @@ export function Evolucao() {
           .filter((t) =>
             t.respId === c.id &&
             projetoIdSet.has(t.projetoId) &&
-            t.dtFim !== null &&
-            competenciaOf(t.dtFim) === l.comp &&
+            (t.dtIni !== null || t.dtFim !== null) &&
+            competenciaOf(t.dtIni ?? t.dtFim!) === l.comp &&
             t.status !== "Concluída" &&
             t.ativa !== false,
           )
