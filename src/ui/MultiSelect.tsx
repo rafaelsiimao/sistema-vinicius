@@ -57,10 +57,10 @@ export function MultiSelect({ label, options, selected, onChange, placeholder = 
         style={{
           width: "100%",
           minHeight: 34,
-          background: "var(--panel2)",
+          background: "var(--card2)",
           border: "1px solid var(--border)",
           borderRadius: 6,
-          color: all ? "var(--tx3)" : "var(--tx1)",
+          color: all ? "var(--tx3)" : "var(--tx)",
           padding: "0 28px 0 10px",
           textAlign: "left",
           cursor: "pointer",
@@ -83,13 +83,13 @@ export function MultiSelect({ label, options, selected, onChange, placeholder = 
             top: "calc(100% + 4px)",
             left: 0,
             zIndex: 200,
-            background: "var(--panel)",
+            background: "var(--card)",
             border: "1px solid var(--border)",
             borderRadius: 6,
             minWidth: "100%",
             maxHeight: 260,
             overflowY: "auto",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
           }}
         >
           <label
@@ -102,6 +102,8 @@ export function MultiSelect({ label, options, selected, onChange, placeholder = 
               borderBottom: "1px solid var(--border)",
               fontWeight: 700,
               fontSize: 12,
+              color: "var(--tx)",
+              background: "var(--card2)",
             }}
           >
             <input type="checkbox" checked={all} onChange={toggleAll} style={{ width: "auto", margin: 0 }} />
@@ -117,7 +119,9 @@ export function MultiSelect({ label, options, selected, onChange, placeholder = 
                 padding: "7px 12px",
                 cursor: "pointer",
                 fontSize: 12,
+                color: "var(--tx2)",
                 borderBottom: "1px solid var(--border)",
+                background: "var(--card)",
               }}
             >
               <input

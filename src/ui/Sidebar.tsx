@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useData } from "@/store/useData";
 import { useAuth } from "@/auth/useAuth";
@@ -60,6 +60,15 @@ export function Sidebar() {
   const { mode, authEmail, signOut } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const [isDark, setIsDark] = useState(() => {
+    const saved = localStorage.getItem("jobz_theme");
+    return saved ? saved === "dark" : true;
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("light", !isDark);
+    localStorage.setItem("jobz_theme", isDark ? "dark" : "light");
+  }, [isDark]);
 
   const sections = SECTIONS.map((sec) => ({
     ...sec,
@@ -167,6 +176,16 @@ export function Sidebar() {
             </div>
           </>
         )}
+        <div style={{ padding: "10px 14px 0", display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            className="btn btn-sm"
+            style={{ flex: 1, justifyContent: "center" }}
+            onClick={() => setIsDark((d) => !d)}
+            title={isDark ? "Ativar tema claro" : "Ativar tema escuro"}
+          >
+            {isDark ? "☀ Claro" : "🌙 Escuro"}
+          </button>
+        </div>
         <div className="data-badge">
           fonte: <b>{dataSource === "supabase" ? "nuvem (Supabase)" : "local (navegador)"}</b>
         </div>

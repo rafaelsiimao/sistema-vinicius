@@ -14,7 +14,7 @@ import { uuid } from "@/lib/id";
 import type { Parcela } from "@/types";
 
 export function Faturamento() {
-  const { snap, save, remove, toast } = useData();
+  const { snap, save, remove, toast, isAdmin } = useData();
   const today = todayISO();
   const [receber, setReceber] = useState<Parcela | null>(null);
   const [editing, setEditing] = useState<Parcela | null>(null);
@@ -91,24 +91,28 @@ export function Faturamento() {
                   <td className="muted">{p.recebidoEm ? fmtDate(p.recebidoEm) : "—"}</td>
                   <td>
                     <div className="row-actions">
-                      {p.status === "recebida" ? (
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => {
-                            void save("parcelas", { ...p, status: "a_receber", recebidoEm: null });
-                            toast("Recebimento desfeito");
-                          }}
-                        >
-                          desfazer
-                        </button>
-                      ) : (
-                        <button className="btn btn-sm btn-green" onClick={() => setReceber(p)}>
-                          receber
+                      {isAdmin && (
+                        p.status === "recebida" ? (
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => {
+                              void save("parcelas", { ...p, status: "a_receber", recebidoEm: null });
+                              toast("Recebimento desfeito");
+                            }}
+                          >
+                            desfazer
+                          </button>
+                        ) : p.status !== "cancelada" ? (
+                          <button className="btn btn-sm btn-green" onClick={() => setReceber(p)}>
+                            receber
+                          </button>
+                        ) : null
+                      )}
+                      {isAdmin && (
+                        <button className="btn btn-sm" onClick={() => setEditing(p)}>
+                          editar
                         </button>
                       )}
-                      <button className="btn btn-sm" onClick={() => setEditing(p)}>
-                        editar
-                      </button>
                     </div>
                   </td>
                 </tr>

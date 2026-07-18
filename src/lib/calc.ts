@@ -323,6 +323,13 @@ export function receitaMesCents(projetoId: string, comp: string, parcelas: Parce
     .reduce((s, p) => s + p.valorCents, 0);
 }
 
+/** Receita JÁ RECEBIDA de um projeto numa competência (status "recebida"). */
+export function receitaRecebidaMesCents(projetoId: string, comp: string, parcelas: Parcela[]): number {
+  return parcelas
+    .filter((p) => p.projetoId === projetoId && p.status === "recebida" && competenciaOf(p.vencimento) === comp)
+    .reduce((s, p) => s + p.valorCents, 0);
+}
+
 /** Custo de horas (mão de obra) de um projeto numa competência. */
 export function custoHorasMesCents(
   projetoId: string,
@@ -353,13 +360,16 @@ export function custoPctMesCents(
 export interface LinhaDRE {
   comp: string;
   receita: number;
+  receitaRecebida: number;
   impostos: number;
   comissao: number;
   receitaLiq: number;
-  custoHoras: number;
-  custoBase: number;
+  lucroReservado: number;
   adm: number;
   marketing: number;
+  custoHoras: number;
+  custoBase: number;
+  totalDespesas: number;
   resultado: number;
 }
 
@@ -373,15 +383,18 @@ export function linhaDRE(
   rateOf: (consultorId: string) => number,
 ): LinhaDRE {
   const receita = projetos.reduce((s, p) => s + receitaMesCents(p.id, comp, parcelas), 0);
+  const receitaRecebida = projetos.reduce((s, p) => s + receitaRecebidaMesCents(p.id, comp, parcelas), 0);
   const impostos = projetos.reduce((s, p) => s + custoPctMesCents(p.pctImpostos ?? 0, p.id, comp, parcelas), 0);
   const comissao = projetos.reduce((s, p) => s + custoPctMesCents(p.pctCom ?? 0, p.id, comp, parcelas), 0);
   const adm = projetos.reduce((s, p) => s + custoPctMesCents(p.pctAdm ?? 0, p.id, comp, parcelas), 0);
   const marketing = projetos.reduce((s, p) => s + custoPctMesCents(p.pctMarketing ?? 0, p.id, comp, parcelas), 0);
+  const lucroReservado = projetos.reduce((s, p) => s + custoPctMesCents(p.pctLucro ?? 0, p.id, comp, parcelas), 0);
   const receitaLiq = receita - impostos - comissao;
   const custoHoras = projetos.reduce((s, p) => s + custoHorasMesCents(p.id, comp, lancamentos, rateOf), 0);
   const custoBase = projetos.reduce((s, p) => s + custoBaseMesCents(p.id, comp, custos, todosProjetos), 0);
-  const resultado = receitaLiq - custoHoras - custoBase - adm - marketing;
-  return { comp, receita, impostos, comissao, receitaLiq, custoHoras, custoBase, adm, marketing, resultado };
+  const totalDespesas = lucroReservado + adm + marketing + custoHoras + custoBase;
+  const resultado = receitaLiq - totalDespesas;
+  return { comp, receita, receitaRecebida, impostos, comissao, receitaLiq, lucroReservado, adm, marketing, custoHoras, custoBase, totalDespesas, resultado };
 }
 
 // ── totais de receita (para o Painel) ─────────────────────────
