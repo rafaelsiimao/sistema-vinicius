@@ -58,6 +58,7 @@ export function Tarefas() {
   const [colNome, setColNome] = useState("");
   const [colResp, setColResp] = useState("");
   const [lancar, setLancar] = useState<Tarefa | null>(null);
+  const [gerenciarLanc, setGerenciarLanc] = useState<Tarefa | null>(null);
   const [editar, setEditar] = useState<Tarefa | null>(null);
   const [criar, setCriar] = useState(false);
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
@@ -263,6 +264,9 @@ export function Tarefas() {
                     <td>
                       <div className="row-actions">
                         <button className="btn btn-sm" onClick={() => setLancar(t)}>lançar horas</button>
+                        {horasLancadas(t.id) > 0 && (
+                          <button className="btn btn-sm" onClick={() => setGerenciarLanc(t)}>ver lançamentos</button>
+                        )}
                         {podeEditar && (
                           <button className="btn btn-sm" onClick={() => setEditar(t)}>editar</button>
                         )}
@@ -290,6 +294,14 @@ export function Tarefas() {
           onSave={(l) => { void save("lancamentos", l); toast(`${fmtH(l.horas)}h lançadas`); setLancar(null); }}
         />
       )}
+      {gerenciarLanc && (
+        <GerenciarLancamentosModal
+          tarefa={gerenciarLanc}
+          onClose={() => setGerenciarLanc(null)}
+          onDelete={(id) => { void remove("lancamentos", id); toast("Lançamento excluído"); }}
+          onAdd={(l) => { void save("lancamentos", l); toast(`${fmtH(l.horas)}h lançadas`); }}
+        />
+      )}
       {(criar || editar) && (
         <TarefaFormModal
           tarefa={editar}
@@ -314,6 +326,128 @@ export function Tarefas() {
         />
       )}
     </>
+  );
+}
+
+// ─── Gerenciar Lançamentos ────────────────────────────────────────
+function GerenciarLancamentosModal({
+  tarefa, onClose, onDelete, onAdd,
+}: {
+  tarefa: Tarefa;
+  onClose: () => void;
+  onDelete: (id: string) => void;
+  onAdd: (l: Lancamento) => void;
+}) {
+  const { snap, currentUser, isAdmin } = useData();
+  const [adicionando, setAdicionando] = useState(false);
+  const [horas, setHoras] = useState(1);
+  const [data, setData] = useState(todayISO());
+  const [consultorId, setConsultorId] = useState(
+    isAdmin ? tarefa.respId ?? currentUser?.id ?? snap.equipe[0]?.id ?? "" : currentUser?.id ?? "",
+  );
+  const [obs, setObs] = useState("");
+
+  const nomeConsultor = useMemo(() => {
+    const m = new Map(snap.equipe.map((c) => [c.id, c.nome]));
+    return (id: string) => m.get(id) ?? id;
+  }, [snap.equipe]);
+
+  const lancamentos = snap.lancamentos
+    .filter((l) => l.tarefaId === tarefa.id)
+    .sort((a, b) => a.data.localeCompare(b.data));
+
+  const totalH = lancamentos.reduce((s, l) => s + l.horas, 0);
+
+  function salvarNovo() {
+    if (horas <= 0) return;
+    onAdd({ id: uuid(), projetoId: tarefa.projetoId, tarefaId: tarefa.id, consultorId, competencia: competenciaOf(data), horas, data, obs: obs.trim() });
+    setHoras(1); setObs(""); setAdicionando(false);
+  }
+
+  return (
+    <Modal
+      title="Lançamentos de horas"
+      subtitle={tarefa.nome}
+      onClose={onClose}
+      actions={<button className="btn" onClick={onClose}>Fechar</button>}
+    >
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 12 }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--tx3)" }}>
+            <th className="l" style={{ padding: "4px 8px" }}>Data</th>
+            <th className="l" style={{ padding: "4px 8px" }}>Consultor</th>
+            <th className="l" style={{ padding: "4px 8px" }}>Competência</th>
+            <th style={{ padding: "4px 8px", textAlign: "right" }}>Horas</th>
+            <th className="l" style={{ padding: "4px 8px" }}>Obs</th>
+            <th style={{ padding: "4px 8px" }}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {lancamentos.map((l) => (
+            <tr key={l.id} style={{ borderBottom: "1px solid var(--border)" }}>
+              <td style={{ padding: "6px 8px" }}>{fmtDate(l.data)}</td>
+              <td style={{ padding: "6px 8px" }}>{nomeConsultor(l.consultorId)}</td>
+              <td style={{ padding: "6px 8px", color: "var(--tx3)" }}>{labelCompetencia(l.competencia)}</td>
+              <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600 }}>{fmtH(l.horas)}h</td>
+              <td style={{ padding: "6px 8px", color: "var(--tx3)", fontSize: 11 }}>{l.obs || "—"}</td>
+              <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                <button
+                  className="btn btn-sm btn-danger"
+                  onClick={() => onDelete(l.id)}
+                  title="Excluir lançamento"
+                >
+                  excluir
+                </button>
+              </td>
+            </tr>
+          ))}
+          {lancamentos.length === 0 && (
+            <tr><td colSpan={6} style={{ padding: 12, textAlign: "center", color: "var(--tx3)" }}>Nenhum lançamento</td></tr>
+          )}
+        </tbody>
+        <tfoot>
+          <tr style={{ borderTop: "2px solid var(--border)" }}>
+            <td colSpan={3} style={{ padding: "6px 8px", fontWeight: 600 }}>Total</td>
+            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700 }}>{fmtH(totalH)}h</td>
+            <td colSpan={2}></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      {!adicionando ? (
+        <button className="btn btn-sm btn-primary" onClick={() => setAdicionando(true)}>+ Adicionar lançamento</button>
+      ) : (
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+          <div className="form-grid" style={{ marginBottom: 8 }}>
+            <div>
+              <label>Consultor</label>
+              {isAdmin
+                ? <select value={consultorId} onChange={(e) => setConsultorId(e.target.value)}>
+                    {snap.equipe.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                : <input value={currentUser?.nome ?? ""} readOnly />
+              }
+            </div>
+            <div>
+              <label>Data</label>
+              <input type="date" value={data} onChange={(e) => setData(e.target.value)} />
+            </div>
+            <div>
+              <label>Horas</label>
+              <input type="number" step="0.5" min="0.5" value={horas} onChange={(e) => setHoras(Number(e.target.value))} />
+            </div>
+            <div>
+              <label>Observação</label>
+              <input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="O que foi feito" />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-primary" onClick={salvarNovo}>Lançar</button>
+            <button className="btn" onClick={() => setAdicionando(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 
